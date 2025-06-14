@@ -2,44 +2,99 @@
 * text=auto
 
 # C# files
-*.cs text diff=csharp
+*.cs     text diff=csharp
+*.csx    text diff=csharp
+*.vb     text
+*.fs     text
+*.fsx    text
+*.fsi    text
 
-# Visual Studio solution files
-*.sln text eol=crlf
+# Web Files
+*.html   text diff=html
+*.css    text
+*.js     text
+*.ts     text
+*.json   text
+*.xml    text
+*.config text
 
-# Web files
-*.js text
-*.css text
-*.html text
-*.json text
+# Project files
+*.csproj text
+*.vbproj text
+*.fsproj text
+*.sln    text merge=union
 
 # Documentation
-*.md text
+*.md     text
+*.txt    text
+*.rtf    text
 
 # Scripts
-*.sh text eol=lf
-*.bat text eol=crlf
+*.bat    text eol=crlf
+*.sh     text eol=lf
+*.ps1    text eol=crlf
 
-# Databases
-*.db binary
+# Serialisation
+*.json   text
+*.xml    text
+*.yaml   text
+*.yml    text
+
+# Graphics
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.ico    binary
+*.svg    text
+
+# Archives
+*.7z     binary
+*.gz     binary
+*.tar    binary
+*.zip    binary
+
+# Executables
+*.exe    binary
+*.dll    binary
+*.so     binary
+*.dylib  binary
+
+# Fonts
+*.ttf    binary
+*.eot    binary
+*.woff   binary
+*.woff2  binary
+
+# Database
+*.db     binary
 *.sqlite binary
 *.sqlite3 binary
 
-# Images
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.ico binary
-*.svg text
+# Office documents
+*.doc    binary
+*.docx   binary
+*.xls    binary
+*.xlsx   binary
+*.ppt    binary
+*.pptx   binary
+*.pdf    binary
 
-# Archives
-*.zip binary
-*.tar binary
-*.gz binary
+# Video
+*.mp4    binary
+*.mov    binary
+*.wmv    binary
+*.flv    binary
+*.webm   binary
 
-# Executables
-*.exe binary
-*.dll binary
-*.so binary
-*.dylib binary
+# Audio
+*.mp3    binary
+*.ogg    binary
+*.wav    binary
+*.flac   binary
+
+# Ignore files (like .gitignore) exported with LF
+.*ignore text eol=lf
+
+# Line ending files
+.editorconfig text eol=lf

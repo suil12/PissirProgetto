@@ -3,6 +3,7 @@ using MobiShare.Core.Interfaces;
 using MobiShare.Core.Services;
 using MobiShare.Infrastructure.Data;
 using MobiShare.Infrastructure.Repositories;
+using MobiShare.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -62,17 +63,8 @@ builder.Services.AddScoped<IMezzoService, MezzoService>();
 builder.Services.AddScoped<IParcheggioService, ParcheggioService>();
 builder.Services.AddScoped<IPuntiEcoService, PuntiEcoService>();
 
-// Register MQTT service
-builder.Services.AddScoped<IMqttService, MobiShare.IoT.Services.ServizioMqtt>();
-
-// Configure MQTT settings
-builder.Services.Configure<MobiShare.IoT.Models.MqttConfig>(options =>
-{
-    options.Server = "localhost";
-    options.Port = 1883;
-    options.ClientId = "MobiShare-API";
-    options.CleanSession = true;
-});
+// Register MQTT service (Mock per ora)
+builder.Services.AddScoped<IMqttService, MockMqttService>();
 
 // Add JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -122,11 +114,21 @@ app.MapControllers();
 // Serve static files
 app.UseStaticFiles();
 
-// Ensure database is created
+// Ensure database is created and seeded
 using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<MobiShareDbContext>();
-    context.Database.EnsureCreated();
+    try
+    {
+        context.Database.EnsureCreated();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogInformation("Database creato e popolato con dati di test");
+    }
+    catch (Exception ex)
+    {
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        logger.LogError(ex, "Errore durante la creazione del database");
+    }
 }
 
 app.Run();

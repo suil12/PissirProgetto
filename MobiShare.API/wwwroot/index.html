@@ -1,21 +1,273 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MobiShare - Sharing Mobilità Sostenibile</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="nav-brand">
+                <i class="fas fa-bicycle"></i>
+                <span>MobiShare</span>
+            </div>
+            <nav class="nav" id="userInfo" style="display: none;">
+                <div class="user-info">
+                    <span id="username"></span>
+                    <span class="credit">€<span id="userCredit">0.00</span></span>
+                    <span class="eco-points"><i class="fas fa-leaf"></i> <span id="ecoPoints">0</span></span>
+                    <button onclick="logout()" class="btn-logout">
+                        <i class="fas fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </nav>
+        </div>
+    </header>
 
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+    <!-- Authentication Section -->
+    <section id="authSection" class="auth-section">
+        <div class="container">
+            <div class="auth-container">
+                <div class="auth-header">
+                    <h1><i class="fas fa-bicycle"></i> MobiShare</h1>
+                    <p>La mobilità sostenibile a portata di click</p>
+                </div>
+                
+                <div class="auth-tabs">
+                    <button class="tab-btn active" onclick="showLogin()">Login</button>
+                    <button class="tab-btn" onclick="showRegister()">Registrati</button>
+                </div>
 
-  <ItemGroup>
-    <PackageReference Include="MQTTnet" Version="4.3.1.873" />
-    <PackageReference Include="MQTTnet.Extensions.ManagedClient" Version="4.3.1.873" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-  </ItemGroup>
+                <!-- Login Form -->
+                <form id="loginForm" class="auth-form">
+                    <h2>Accesso</h2>
+                    <div class="form-group">
+                        <input type="text" id="loginUsername" placeholder="Username" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="loginPassword" placeholder="Password" required>
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-sign-in-alt"></i> Entra
+                    </button>
+                    
+                    <div class="demo-users">
+                        <p><strong>Utenti Demo:</strong></p>
+                        <small>👤 <strong>mario.rossi</strong> / password123 (Cliente)</small><br>
+                        <small>⚙️ <strong>admin</strong> / admin123 (Gestore)</small>
+                    </div>
+                </form>
 
-  <ItemGroup>
-    <ProjectReference Include="..\MobiShare.Core\MobiShare.Core.csproj" />
-  </ItemGroup>
+                <!-- Register Form -->
+                <form id="registerForm" class="auth-form" style="display: none;">
+                    <h2>Registrazione</h2>
+                    <div class="form-group">
+                        <input type="text" id="registerUsername" placeholder="Username" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="email" id="registerEmail" placeholder="Email" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="password" id="registerPassword" placeholder="Password" required>
+                    </div>
+                    <div class="form-group">
+                        <select id="userType" required>
+                            <option value="0">Cliente</option>
+                            <option value="1">Gestore</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-primary">
+                        <i class="fas fa-user-plus"></i> Registrati
+                    </button>
+                </form>
+            </div>
+        </div>
+    </section>
 
-</Project>
+    <!-- Main Application Section -->
+    <section id="mainSection" class="main-section" style="display: none;">
+        <div class="container">
+            <!-- Navigation Tabs -->
+            <nav class="nav-tabs">
+                <button class="nav-btn active" onclick="showTab('mezzi')">
+                    <i class="fas fa-bicycle"></i> Mezzi
+                </button>
+                <button class="nav-btn" onclick="showTab('parcheggi')">
+                    <i class="fas fa-parking"></i> Parcheggi
+                </button>
+                <button class="nav-btn" onclick="showTab('corse')">
+                    <i class="fas fa-route"></i> Corse
+                </button>
+                <button class="nav-btn" onclick="showTab('profilo')">
+                    <i class="fas fa-user"></i> Profilo
+                </button>
+                <button class="nav-btn gestore-only" onclick="showTab('gestione')" style="display: none;">
+                    <i class="fas fa-cog"></i> Gestione
+                </button>
+            </nav>
+
+            <!-- Tab Contents -->
+            
+            <!-- Mezzi Tab -->
+            <div id="mezziTab" class="tab-content active">
+                <div class="tab-header">
+                    <h2><i class="fas fa-bicycle"></i> Mezzi Disponibili</h2>
+                    <div class="filters">
+                        <select id="tipoMezzoFilter">
+                            <option value="">Tutti i mezzi</option>
+                            <option value="0">Bici Muscolare</option>
+                            <option value="1">Bici Elettrica</option>
+                            <option value="2">Monopattino</option>
+                        </select>
+                        <select id="parcheggioFilter">
+                            <option value="">Tutti i parcheggi</option>
+                        </select>
+                        <button onclick="loadMezzi()" class="btn-secondary">
+                            <i class="fas fa-sync"></i> Aggiorna
+                        </button>
+                    </div>
+                </div>
+                <div id="mezziList" class="grid-container"></div>
+            </div>
+
+            <!-- Parcheggi Tab -->
+            <div id="parcheggioTab" class="tab-content">
+                <div class="tab-header">
+                    <h2><i class="fas fa-parking"></i> Parcheggi</h2>
+                    <button onclick="loadParcheggi()" class="btn-secondary">
+                        <i class="fas fa-sync"></i> Aggiorna
+                    </button>
+                </div>
+                <div id="parcheggioList" class="grid-container"></div>
+            </div>
+
+            <!-- Corse Tab -->
+            <div id="corseTab" class="tab-content">
+                <div class="tab-header">
+                    <h2><i class="fas fa-route"></i> Le Mie Corse</h2>
+                    <button onclick="loadCorse()" class="btn-secondary">
+                        <i class="fas fa-sync"></i> Aggiorna
+                    </button>
+                </div>
+                
+                <!-- Active Ride Section -->
+                <div id="activeRideSection" style="display: none;" class="active-ride">
+                    <h3><i class="fas fa-play-circle"></i> Corsa in corso</h3>
+                    <div class="ride-info">
+                        <div class="ride-details">
+                            <p><strong>Mezzo:</strong> <span id="activeMezzoId"></span></p>
+                            <p><strong>Durata:</strong> <span id="rideDuration">00:00:00</span></p>
+                            <p><strong>Costo attuale:</strong> €<span id="rideCost">0.00</span></p>
+                            <p class="eco-info"><strong>Punti Eco:</strong> +<span id="rideEcoPoints">0</span> <i class="fas fa-leaf"></i></p>
+                        </div>
+                        <button onclick="endRide()" class="btn-danger">
+                            <i class="fas fa-stop-circle"></i> Termina Corsa
+                        </button>
+                    </div>
+                </div>
+
+                <div id="corseHistory" class="ride-history"></div>
+            </div>
+
+            <!-- Profilo Tab -->
+            <div id="profiloTab" class="tab-content">
+                <div class="tab-header">
+                    <h2><i class="fas fa-user"></i> Il Mio Profilo</h2>
+                </div>
+                <div class="profile-section">
+                    <div class="profile-card">
+                        <h3>Informazioni Account</h3>
+                        <div id="profiloInfo"></div>
+                    </div>
+                    <div class="profile-card">
+                        <h3><i class="fas fa-wallet"></i> Gestione Credito</h3>
+                        <div class="credit-section">
+                            <div class="form-group">
+                                <label>Importo ricarica:</label>
+                                <input type="number" id="creditoAmount" min="5" max="100" step="5" value="10">
+                            </div>
+                            <button onclick="ricaricaCredito()" class="btn-primary">
+                                <i class="fas fa-plus"></i> Ricarica €<span id="creditoAmountDisplay">10</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="profile-card eco-card">
+                        <h3><i class="fas fa-leaf"></i> Punti Eco</h3>
+                        <div class="eco-section">
+                            <p>Punti attuali: <strong id="currentEcoPoints">0</strong></p>
+                            <p>Prossimo bonus: <strong id="nextBonus">€2.00</strong> a 100 punti</p>
+                            <div class="eco-progress">
+                                <div class="progress-bar">
+                                    <div id="ecoProgressBar" class="progress-fill"></div>
+                                </div>
+                            </div>
+                            <button onclick="convertEcoPoints()" id="convertEcoBtn" class="btn-eco" disabled>
+                                <i class="fas fa-recycle"></i> Converti 100 punti in €2.00
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gestione Tab (Solo Gestori) -->
+            <div id="gestioneTab" class="tab-content gestore-only">
+                <div class="tab-header">
+                    <h2><i class="fas fa-cog"></i> Gestione Sistema</h2>
+                    <button onclick="loadGestione()" class="btn-secondary">
+                        <i class="fas fa-sync"></i> Aggiorna
+                    </button>
+                </div>
+                <div class="management-section">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>Mezzi Totali</h3>
+                            <span id="totalMezzi" class="stat-number">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Mezzi In Uso</h3>
+                            <span id="mezziInUso" class="stat-number">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Corse Oggi</h3>
+                            <span id="corseOggi" class="stat-number">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <h3>Ricavi Oggi</h3>
+                            <span id="ricaviOggi" class="stat-number">€0.00</span>
+                        </div>
+                    </div>
+                    
+                    <div class="management-tabs">
+                        <button class="management-tab-btn active" onclick="showManagementTab('mezzi')">Gestione Mezzi</button>
+                        <button class="management-tab-btn" onclick="showManagementTab('parcheggi')">Gestione Parcheggi</button>
+                        <button class="management-tab-btn" onclick="showManagementTab('utenti')">Gestione Utenti</button>
+                    </div>
+                    
+                    <div id="managementContent" class="management-content"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Notifications -->
+    <div id="notifications" class="notifications"></div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+        <div class="spinner"></div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>
+        // Initialize credit amount display
+        document.getElementById('creditoAmount').addEventListener('input', function() {
+            document.getElementById('creditoAmountDisplay').textContent = this.value;
+        });
+    </script>
+</body>
+</html>

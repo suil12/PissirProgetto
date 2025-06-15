@@ -1,4 +1,4 @@
-// MobiShare.API/wwwroot/js/app.js
+// MobiShare.API/wwwroot/js/app.js - FIXED VERSION
 
 // Global state
 let currentUser = null;
@@ -69,8 +69,9 @@ async function handleLogin(e) {
         
         if (response.ok) {
             const data = await response.json();
-            authToken = data.token;
-            currentUser = data.user;
+            // FIX: Controller restituisce { Token, Utente } non { token, user }
+            authToken = data.token || data.Token;
+            currentUser = data.utente || data.Utente || data.user;
             
             localStorage.setItem('authToken', authToken);
             localStorage.setItem('currentUser', JSON.stringify(currentUser));
@@ -96,7 +97,8 @@ async function handleRegister(e) {
     const tipo = parseInt(document.getElementById('userType').value);
     
     try {
-        const response = await fetch(`${API_BASE}/auth/register`, {
+        // FIX: Endpoint corretto è "registra" non "register"
+        const response = await fetch(`${API_BASE}/auth/registra`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -170,7 +172,8 @@ function updateUserInfo() {
 
 async function loadUserProfile() {
     try {
-        const response = await fetch(`${API_BASE}/users/profile`, {
+        // FIX: Endpoint corretto è "/utenti/profilo" non "/users/profile"
+        const response = await fetch(`${API_BASE}/utenti/profilo`, {
             headers: {
                 'Authorization': `Bearer ${authToken}`
             }
@@ -233,160 +236,221 @@ function showTab(tabName) {
 // Mezzi functions
 async function loadMezzi() {
     try {
-        let url = `${API_BASE}/vehicles`;
+        showLoading(true);
+        // FIX: Endpoint corretto è "/mezzi" non "/vehicles"
+        let url = `${API_BASE}/mezzi`;
         
-        // Add location filter if available
-        if (userLocation) {
-            url += `?lat=${userLocation.latitude}&lng=${userLocation.longitude}&radius=2`;
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const mezzi = await response.json();
+            displayMezzi(mezzi);
+        } else {
+            showNotification('Errore nel caricamento mezzi', 'error');
         }
-        
-        const response = await fetch(url);
-        const mezzi = await response.json();
-        
-        displayMezzi(mezzi);
     } catch (error) {
-        console.error('Error loading mezzi:', error);
-        showNotification('Errore nel caricamento dei mezzi', 'error');
+        console.error('Load mezzi error:', error);
+        showNotification('Errore di connessione', 'error');
+    } finally {
+        showLoading(false);
     }
 }
 
 function displayMezzi(mezzi) {
     const container = document.getElementById('mezziList');
-    container.innerHTML = '';
+    if (!container) return;
     
-    const filtroTipo = document.getElementById('tipoMezzoFilter')?.value;
-    
-    const filteredMezzi = mezzi.filter(mezzo => {
-        if (filtroTipo && mezzo.tipo.toString() !== filtroTipo) return false;
-        return mezzo.stato === 0; // Solo mezzi disponibili
-    });
-    
-    if (filteredMezzi.length === 0) {
-        container.innerHTML = '<div class="no-results">Nessun mezzo disponibile</div>';
+    if (mezzi.length === 0) {
+        container.innerHTML = '<p class="no-results">Nessun mezzo disponibile al momento.</p>';
         return;
     }
     
-    filteredMezzi.forEach(mezzo => {
-        const card = createMezzoCard(mezzo);
-        container.appendChild(card);
-    });
+    container.innerHTML = mezzi.map(mezzo => `
+        <div class="mezzo-card" data-id="${mezzo.id}">
+            <div class="mezzo-header">
+                <h3>${getMezzoIcon(mezzo.tipo)} ${mezzo.modello}</h3>
+                <span class="mezzo-status ${getStatusClass(mezzo.stato)}">${getStatusText(mezzo.stato)}</span>
+            </div>
+            <div class="mezzo-details">
+                <p><strong>Tipo:</strong> ${getTipoText(mezzo.tipo)}</p>
+                <p><strong>Tariffa:</strong> €${mezzo.tariffaPerMinuto}/min</p>
+                ${mezzo.percentualeBatteria ? `<p><strong>Batteria:</strong> ${mezzo.percentualeBatteria}%</p>` : ''}
+                <p><strong>Posizione:</strong> ${mezzo.latitudine?.toFixed(4)}, ${mezzo.longitudine?.toFixed(4)}</p>
+            </div>
+            ${mezzo.stato === 0 ? `<button onclick="startRide('${mezzo.id}')" class="btn-primary">Inizia Corsa</button>` : ''}
+        </div>
+    `).join('');
 }
 
-function createMezzoCard(mezzo) {
-    const card = document.createElement('div');
-    card.className = 'mezzo-card';
+// Parcheggi functions
+async function loadParcheggi() {
+    try {
+        showLoading(true);
+        // FIX: Endpoint corretto è "/parcheggi" non "/parking"
+        const response = await fetch(`${API_BASE}/parcheggi`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const parcheggi = await response.json();
+            displayParcheggi(parcheggi);
+        } else {
+            showNotification('Errore nel caricamento parcheggi', 'error');
+        }
+    } catch (error) {
+        console.error('Load parcheggi error:', error);
+        showNotification('Errore di connessione', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function displayParcheggi(parcheggi) {
+    const container = document.getElementById('parcheggioList');
+    if (!container) return;
     
-    const tipoNames = ['Bici Muscolare', 'Bici Elettrica', 'Monopattino'];
-    const tipoIcons = ['🚴‍♂️', '🚴‍♀️', '🛴'];
-    const statusNames = ['Disponibile', 'In Uso', 'Manutenzione', 'Batteria Scarica'];
-    const statusClasses = ['disponibile', 'inuso', 'manutenzione', 'batteriascarica'];
+    if (parcheggi.length === 0) {
+        container.innerHTML = '<p class="no-results">Nessun parcheggio disponibile al momento.</p>';
+        return;
+    }
     
-    let batteryHtml = '';
-    if (mezzo.percentualeBatteria !== null) {
-        const batteryClass = mezzo.percentualeBatteria > 50 ? 'battery-high' : 
-                           mezzo.percentualeBatteria > 20 ? 'battery-medium' : 'battery-low';
-        batteryHtml = `
-            <div class="battery-indicator">
-                🔋 ${mezzo.percentualeBatteria}%
-                <div class="battery-bar">
-                    <div class="battery-fill ${batteryClass}" style="width: ${mezzo.percentualeBatteria}%"></div>
+    container.innerHTML = parcheggi.map(parcheggio => `
+        <div class="parcheggio-card" data-id="${parcheggio.id}">
+            <div class="parcheggio-header">
+                <h3><i class="fas fa-parking"></i> ${parcheggio.nome}</h3>
+                <span class="slots-info">${parcheggio.slotsDisponibili}/${parcheggio.capacita} disponibili</span>
+            </div>
+            <div class="parcheggio-details">
+                <p><strong>Posizione:</strong> ${parcheggio.latitudine?.toFixed(4)}, ${parcheggio.longitudine?.toFixed(4)}</p>
+                <div class="occupancy-bar">
+                    <div class="occupancy-fill" style="width: ${((parcheggio.capacita - parcheggio.slotsDisponibili) / parcheggio.capacita) * 100}%"></div>
                 </div>
             </div>
-        `;
-    }
-    
-    card.innerHTML = `
-        <div class="mezzo-header">
-            <div class="mezzo-icon">${tipoIcons[mezzo.tipo]}</div>
-            <div class="mezzo-status status-${statusClasses[mezzo.stato]}">
-                ${statusNames[mezzo.stato]}
-            </div>
+            <button onclick="loadParcheggioDetails('${parcheggio.id}')" class="btn-secondary">Dettagli</button>
         </div>
-        <div class="mezzo-info">
-            <div class="info-row">
-                <strong>Modello:</strong>
-                <span>${mezzo.modello}</span>
-            </div>
-            <div class="info-row">
-                <strong>Tipo:</strong>
-                <span>${tipoNames[mezzo.tipo]}</span>
-            </div>
-            <div class="info-row">
-                <strong>Tariffa:</strong>
-                <span>€${mezzo.tariffaPerMinuto}/min</span>
-            </div>
-            ${batteryHtml}
-        </div>
-        ${mezzo.stato === 0 ? `
-            <button onclick="startRide('${mezzo.id}')" class="btn btn-primary">
-                <i class="fas fa-play"></i> Inizia Corsa
-            </button>
-        ` : ''}
-    `;
-    
-    return card;
+    `).join('');
 }
 
-function filterMezzi() {
-    loadMezzi();
-}
-
-function getCurrentLocation() {
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                userLocation = {
-                    latitude: position.coords.latitude,
-                    longitude: position.coords.longitude
-                };
-                showNotification('Posizione aggiornata', 'success');
-                loadMezzi();
-            },
-            (error) => {
-                showNotification('Impossibile ottenere la posizione', 'error');
-                console.error('Geolocation error:', error);
-            }
-        );
-    } else {
-        showNotification('Geolocalizzazione non supportata', 'error');
-    }
-}
-
-// Ride functions
-async function startRide(mezzoId) {
-    if (activeRide) {
-        showNotification('Hai già una corsa attiva', 'warning');
-        return;
-    }
-    
-    if (currentUser.credito < 2) {
-        showNotification('Credito insufficiente (minimo €2.00)', 'error');
-        return;
-    }
-    
+// Corse functions
+async function loadCorse() {
     try {
-        const response = await fetch(`${API_BASE}/rides/start`, {
+        showLoading(true);
+        // FIX: Endpoint corretto è "/corse/history" non "/rides/history"
+        const response = await fetch(`${API_BASE}/corse/history`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const corse = await response.json();
+            displayCorse(corse);
+        } else {
+            showNotification('Errore nel caricamento corse', 'error');
+        }
+    } catch (error) {
+        console.error('Load corse error:', error);
+        showNotification('Errore di connessione', 'error');
+    } finally {
+        showLoading(false);
+    }
+}
+
+function displayCorse(corse) {
+    const container = document.getElementById('corseHistory');
+    if (!container) return;
+    
+    if (corse.length === 0) {
+        container.innerHTML = '<p class="no-results">Nessuna corsa effettuata.</p>';
+        return;
+    }
+    
+    container.innerHTML = corse.map(corsa => `
+        <div class="corsa-card">
+            <div class="corsa-header">
+                <h4>Corsa ${corsa.mezzoId}</h4>
+                <span class="corsa-date">${new Date(corsa.dataInizio).toLocaleDateString()}</span>
+            </div>
+            <div class="corsa-details">
+                <p><strong>Durata:</strong> ${formatDuration(corsa.durata)}</p>
+                <p><strong>Costo:</strong> €${corsa.costo?.toFixed(2) || '0.00'}</p>
+                ${corsa.puntiEcoAccumulati ? `<p><strong>Punti Eco:</strong> +${corsa.puntiEcoAccumulati} <i class="fas fa-leaf"></i></p>` : ''}
+                <p><strong>Stato:</strong> ${getCorseStatusText(corsa.stato)}</p>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Active ride functions
+async function checkActiveRide() {
+    try {
+        // FIX: Endpoint corretto è "/corse/active" non "/rides/active"
+        const response = await fetch(`${API_BASE}/corse/active`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            activeRide = await response.json();
+            showActiveRide();
+            startRideTimer();
+        } else {
+            activeRide = null;
+            hideActiveRide();
+        }
+    } catch (error) {
+        console.error('Check active ride error:', error);
+    }
+}
+
+function showActiveRide() {
+    const section = document.getElementById('activeRideSection');
+    if (section && activeRide) {
+        section.style.display = 'block';
+        document.getElementById('activeMezzoId').textContent = activeRide.mezzoId;
+        updateRideTimer();
+    }
+}
+
+function hideActiveRide() {
+    const section = document.getElementById('activeRideSection');
+    if (section) {
+        section.style.display = 'none';
+    }
+    if (rideTimer) {
+        clearInterval(rideTimer);
+        rideTimer = null;
+    }
+}
+
+async function startRide(mezzoId) {
+    try {
+        // FIX: Endpoint corretto è "/corse/start" non "/rides/start"
+        const response = await fetch(`${API_BASE}/corse/start`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ vehicleId: mezzoId })
+            body: JSON.stringify({ mezzoId })
         });
         
         if (response.ok) {
-            const ride = await response.json();
-            activeRide = ride;
+            activeRide = await response.json();
             showNotification('Corsa iniziata!', 'success');
-            
-            // Refresh mezzi list and show active ride
-            loadMezzi();
-            showTab('corse');
-            displayActiveRide();
+            showActiveRide();
             startRideTimer();
+            loadMezzi(); // Refresh mezzi list
         } else {
             const error = await response.text();
-            showNotification('Errore nell\'avvio della corsa: ' + error, 'error');
+            showNotification('Impossibile iniziare la corsa: ' + error, 'error');
         }
     } catch (error) {
         console.error('Start ride error:', error);
@@ -397,49 +461,26 @@ async function startRide(mezzoId) {
 async function endRide() {
     if (!activeRide) return;
     
-    const destinationParkingId = document.getElementById('destinationParking').value;
-    if (!destinationParkingId) {
-        showNotification('Seleziona un parcheggio di destinazione', 'warning');
-        return;
-    }
-    
     try {
-        const response = await fetch(`${API_BASE}/rides/${activeRide.id}/end`, {
+        // FIX: Endpoint corretto
+        const response = await fetch(`${API_BASE}/corse/${activeRide.id}/end`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ destinationParkingId })
+            body: JSON.stringify({ parcheggioDestinazioneId: activeRide.parcheggioDiPartenzaId })
         });
         
         if (response.ok) {
-            const completedRide = await response.json();
-            
-            // Stop timer
-            if (rideTimer) {
-                clearInterval(rideTimer);
-                rideTimer = null;
-            }
-            
-            activeRide = null;
-            document.getElementById('corsaAttiva').style.display = 'none';
-            
-            showNotification(`Corsa terminata! Costo: €${completedRide.costo.toFixed(2)}`, 'success');
-            
-            // Update user credit
-            currentUser.credito -= completedRide.costo;
-            if (completedRide.puntiEcoAccumulati > 0) {
-                currentUser.puntiEco += completedRide.puntiEcoAccumulati;
-                showNotification(`+${completedRide.puntiEcoAccumulati} punti eco!`, 'success');
-            }
-            
-            updateUserInfo();
-            loadCorse();
-            loadMezzi();
+            const corsaCompletata = await response.json();
+            showNotification(`Corsa terminata! Costo: €${corsaCompletata.costo?.toFixed(2)}`, 'success');
+            hideActiveRide();
+            loadUserProfile(); // Refresh user data
+            loadCorse(); // Refresh rides history
         } else {
             const error = await response.text();
-            showNotification('Errore nel terminare la corsa: ' + error, 'error');
+            showNotification('Impossibile terminare la corsa: ' + error, 'error');
         }
     } catch (error) {
         console.error('End ride error:', error);
@@ -447,334 +488,32 @@ async function endRide() {
     }
 }
 
-async function checkActiveRide() {
-    if (!authToken) return;
+// Profilo functions
+function loadProfilo() {
+    const container = document.getElementById('profiloInfo');
+    if (!container || !currentUser) return;
     
-    try {
-        const response = await fetch(`${API_BASE}/rides/active`, {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
-        
-        if (response.ok) {
-            const ride = await response.json();
-            activeRide = ride;
-            displayActiveRide();
-            if (!rideTimer) {
-                startRideTimer();
-            }
-        } else if (response.status === 404) {
-            // No active ride
-            activeRide = null;
-            document.getElementById('corsaAttiva').style.display = 'none';
-            if (rideTimer) {
-                clearInterval(rideTimer);
-                rideTimer = null;
-            }
-        }
-    } catch (error) {
-        console.error('Check active ride error:', error);
-    }
-}
-
-function displayActiveRide() {
-    if (!activeRide) return;
-    
-    document.getElementById('corsaAttiva').style.display = 'block';
-    document.getElementById('activeMezzo').textContent = activeRide.vehicleId;
-    document.getElementById('activeStart').textContent = new Date(activeRide.dataInizio).toLocaleString();
-    document.getElementById('activeParking').textContent = activeRide.parcheggioDiPartenzaId;
-    
-    // Load destination parkings
-    loadDestinationParkings();
-}
-
-async function loadDestinationParkings() {
-    try {
-        const response = await fetch(`${API_BASE}/parkings`);
-        const parkings = await response.json();
-        
-        const select = document.getElementById('destinationParking');
-        select.innerHTML = '<option value="">Seleziona parcheggio di destinazione</option>';
-        
-        parkings.forEach(parking => {
-            const option = document.createElement('option');
-            option.value = parking.id;
-            option.textContent = parking.nome;
-            select.appendChild(option);
-        });
-    } catch (error) {
-        console.error('Error loading destination parkings:', error);
-    }
-}
-
-function startRideTimer() {
-    if (rideTimer) clearInterval(rideTimer);
-    
-    rideTimer = setInterval(() => {
-        if (!activeRide) return;
-        
-        const startTime = new Date(activeRide.dataInizio);
-        const now = new Date();
-        const elapsed = Math.floor((now - startTime) / 1000);
-        
-        const hours = Math.floor(elapsed / 3600);
-        const minutes = Math.floor((elapsed % 3600) / 60);
-        const seconds = elapsed % 60;
-        
-        const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-        document.getElementById('rideTimer').textContent = timeStr;
-        
-        // Calculate estimated cost
-        if (activeRide.vehicle) {
-            const elapsedMinutes = elapsed / 60;
-            const estimatedCost = elapsedMinutes * activeRide.vehicle.tariffaPerMinuto;
-            document.getElementById('activeCost').textContent = estimatedCost.toFixed(2);
-        }
-    }, 1000);
-}
-
-// Parcheggi functions
-async function loadParcheggi() {
-    try {
-        const response = await fetch(`${API_BASE}/parkings`);
-        const parcheggi = await response.json();
-        
-        displayParcheggi(parcheggi);
-    } catch (error) {
-        console.error('Error loading parcheggi:', error);
-        showNotification('Errore nel caricamento dei parcheggi', 'error');
-    }
-}
-
-function displayParcheggi(parcheggi) {
-    const container = document.getElementById('parcheggiList');
-    container.innerHTML = '';
-    
-    parcheggi.forEach(parcheggio => {
-        const card = createParcheggioCard(parcheggio);
-        container.appendChild(card);
-    });
-}
-
-function createParcheggioCard(parcheggio) {
-    const card = document.createElement('div');
-    card.className = 'parcheggio-card';
-    
-    card.innerHTML = `
-        <div class="mezzo-header">
-            <div class="mezzo-icon">🅿️</div>
-            <div class="mezzo-status status-disponibile">
-                ${parcheggio.slotsDisponibili}/${parcheggio.capacita} liberi
-            </div>
-        </div>
-        <div class="mezzo-info">
-            <div class="info-row">
-                <strong>Nome:</strong>
-                <span>${parcheggio.nome}</span>
-            </div>
-            <div class="info-row">
-                <strong>Capacità:</strong>
-                <span>${parcheggio.capacita} slot</span>
-            </div>
-            <div class="info-row">
-                <strong>Disponibili:</strong>
-                <span>${parcheggio.slotsDisponibili} slot</span>
-            </div>
-        </div>
-        <button onclick="viewParcheggioDetails('${parcheggio.id}')" class="btn btn-outline">
-            <i class="fas fa-eye"></i> Dettagli
-        </button>
-    `;
-    
-    return card;
-}
-
-async function viewParcheggioDetails(parcheggioId) {
-    try {
-        const response = await fetch(`${API_BASE}/parkings/${parcheggioId}`);
-        const parcheggio = await response.json();
-        
-        // Create modal or expand card to show slots
-        showParcheggioModal(parcheggio);
-    } catch (error) {
-        console.error('Error loading parcheggio details:', error);
-        showNotification('Errore nel caricamento dei dettagli', 'error');
-    }
-}
-
-function showParcheggioModal(parcheggio) {
-    const slotsHtml = parcheggio.slots.map(slot => {
-        const colorClass = slot.coloreLED === 0 ? 'led-verde' : 
-                          slot.coloreLED === 1 ? 'led-rosso' : 'led-giallo';
-        return `
-            <div class="led-slot">
-                <div class="slot-led ${colorClass}"></div>
-                Slot ${slot.numero}
-            </div>
-        `;
-    }).join('');
-    
-    const modal = document.createElement('div');
-    modal.className = 'modal';
-    modal.innerHTML = `
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3>${parcheggio.nome}</h3>
-                <button onclick="closeModal()" class="btn btn-outline">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="slots-indicator">
-                    ${slotsHtml}
-                </div>
-                <div class="mezzi-presenti">
-                    <h4>Mezzi Presenti:</h4>
-                    ${parcheggio.mezziPresenti.map(mezzo => `
-                        <div class="mezzo-item">${mezzo.modello} (${['Bici Muscolare', 'Bici Elettrica', 'Monopattino'][mezzo.tipo]})</div>
-                    `).join('')}
-                </div>
-            </div>
+    container.innerHTML = `
+        <div class="profile-info">
+            <p><strong>Username:</strong> ${currentUser.username}</p>
+            <p><strong>Email:</strong> ${currentUser.email}</p>
+            <p><strong>Tipo:</strong> ${currentUser.tipo === 0 ? 'Cliente' : 'Gestore'}</p>
+            <p><strong>Credito:</strong> €${currentUser.credito?.toFixed(2) || '0.00'}</p>
+            <p><strong>Punti Eco:</strong> ${currentUser.puntiEco || 0}</p>
+            <p><strong>Registrato il:</strong> ${new Date(currentUser.dataRegistrazione).toLocaleDateString()}</p>
         </div>
     `;
     
-    document.body.appendChild(modal);
-}
-
-function closeModal() {
-    const modal = document.querySelector('.modal');
-    if (modal) {
-        modal.remove();
-    }
-}
-
-// Corse functions
-async function loadCorse() {
-    await checkActiveRide();
-    
-    try {
-        const response = await fetch(`${API_BASE}/rides/history`, {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
-        
-        const corse = await response.json();
-        displayCorse(corse);
-    } catch (error) {
-        console.error('Error loading corse:', error);
-        showNotification('Errore nel caricamento delle corse', 'error');
-    }
-}
-
-function displayCorse(corse) {
-    const container = document.getElementById('corseList');
-    container.innerHTML = '';
-    
-    if (corse.length === 0) {
-        container.innerHTML = '<div class="no-results">Nessuna corsa trovata</div>';
-        return;
-    }
-    
-    corse.forEach(corsa => {
-        const item = createCorsaItem(corsa);
-        container.appendChild(item);
-    });
-}
-
-function createCorsaItem(corsa) {
-    const item = document.createElement('div');
-    item.className = 'ride-item';
-    
-    const statusNames = ['In Corso', 'Completata', 'Annullata'];
-    const tipoIcons = ['🚴‍♂️', '🚴‍♀️', '🛴'];
-    
-    const pointsHtml = corsa.puntiEcoAccumulati > 0 ? 
-        `<div class="ride-points">+${corsa.puntiEcoAccumulati} eco</div>` : '';
-    
-    item.innerHTML = `
-        <div class="ride-icon">${tipoIcons[corsa.vehicle?.tipo || 0]}</div>
-        <div class="ride-details">
-            <h4>${corsa.vehicle?.modello || corsa.vehicleId}</h4>
-            <div class="ride-meta">
-                ${new Date(corsa.dataInizio).toLocaleString()}
-                ${corsa.dataFine ? ` - ${new Date(corsa.dataFine).toLocaleString()}` : ''}
-                <br>
-                ${corsa.durata > 0 ? `Durata: ${corsa.durata} min` : ''}
-                | Stato: ${statusNames[corsa.stato]}
-            </div>
-        </div>
-        <div class="ride-cost">€${corsa.costo.toFixed(2)}</div>
-        ${pointsHtml}
-    `;
-    
-    return item;
-}
-
-// Profile functions
-async function loadProfilo() {
-    await loadUserProfile();
-    
-    document.getElementById('profileUsername').textContent = currentUser.username;
-    document.getElementById('profileEmail').textContent = currentUser.email;
-    document.getElementById('profileTipo').textContent = currentUser.tipo === 0 ? 'Cliente' : 'Gestore';
-    document.getElementById('profileDataRegistrazione').textContent = new Date(currentUser.dataRegistrazione).toLocaleDateString();
-    document.getElementById('profileCredito').textContent = currentUser.credito.toFixed(2);
-    document.getElementById('profilePuntiEco').textContent = currentUser.puntiEco;
-    
-    await loadVouchers();
-}
-
-async function loadVouchers() {
-    try {
-        const response = await fetch(`${API_BASE}/users/vouchers`, {
-            headers: {
-                'Authorization': `Bearer ${authToken}`
-            }
-        });
-        
-        const vouchers = await response.json();
-        displayVouchers(vouchers);
-    } catch (error) {
-        console.error('Error loading vouchers:', error);
-    }
-}
-
-function displayVouchers(vouchers) {
-    const container = document.getElementById('vouchersList');
-    container.innerHTML = '';
-    
-    if (vouchers.length === 0) {
-        container.innerHTML = '<div class="no-results">Nessun buono sconto disponibile</div>';
-        return;
-    }
-    
-    vouchers.forEach(voucher => {
-        const item = document.createElement('div');
-        item.className = 'voucher-item';
-        
-        item.innerHTML = `
-            <div>
-                <div class="voucher-value">€${voucher.valore.toFixed(2)}</div>
-                <div class="voucher-expiry">Scade: ${new Date(voucher.dataScadenza).toLocaleDateString()}</div>
-            </div>
-            <button onclick="useVoucher('${voucher.id}')" class="btn btn-success">Usa</button>
-        `;
-        
-        container.appendChild(item);
-    });
+    // Update eco points progress
+    updateEcoPointsProgress();
 }
 
 async function ricaricaCredito() {
-    const amount = parseFloat(document.getElementById('rechargeAmount').value);
-    
-    if (!amount || amount < 5 || amount > 100) {
-        showNotification('Importo non valido (min €5, max €100)', 'error');
-        return;
-    }
+    const amount = parseFloat(document.getElementById('creditoAmount').value);
     
     try {
-        const response = await fetch(`${API_BASE}/users/credito`, {
+        // FIX: Endpoint corretto è "/utenti/credito" non "/users/credit"
+        const response = await fetch(`${API_BASE}/utenti/credito`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -784,53 +523,38 @@ async function ricaricaCredito() {
         });
         
         if (response.ok) {
-            currentUser.credito += amount;
-            updateUserInfo();
-            document.getElementById('profileCredito').textContent = currentUser.credito.toFixed(2);
-            document.getElementById('rechargeAmount').value = '';
-            showNotification(`Credito ricaricato: +€${amount.toFixed(2)}`, 'success');
+            showNotification(`Credito ricaricato: €${amount.toFixed(2)}`, 'success');
+            loadUserProfile(); // Refresh user data
         } else {
             showNotification('Errore nella ricarica', 'error');
         }
     } catch (error) {
-        console.error('Recharge error:', error);
+        console.error('Ricarica credito error:', error);
         showNotification('Errore di connessione', 'error');
     }
 }
 
-async function convertiPunti() {
-    const points = parseInt(document.getElementById('pointsToConvert').value);
-    
-    if (!points || points < 100 || points % 100 !== 0) {
-        showNotification('Inserire un multiplo di 100 punti (min 100)', 'error');
-        return;
-    }
-    
-    if (points > currentUser.puntiEco) {
-        showNotification('Punti insufficienti', 'error');
+async function convertEcoPoints() {
+    if (!currentUser || currentUser.puntiEco < 100) {
+        showNotification('Punti insufficienti per la conversione', 'error');
         return;
     }
     
     try {
-        const response = await fetch(`${API_BASE}/users/convert-points`, {
+        // FIX: Endpoint corretto è "/utenti/converti-punti"
+        const response = await fetch(`${API_BASE}/utenti/converti-punti`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${authToken}`
             },
-            body: JSON.stringify({ puntiDaConvertire: points })
+            body: JSON.stringify({ puntiDaConvertire: 100 })
         });
         
         if (response.ok) {
             const result = await response.json();
-            currentUser.puntiEco -= points;
-            
-            updateUserInfo();
-            document.getElementById('profilePuntiEco').textContent = currentUser.puntiEco;
-            document.getElementById('pointsToConvert').value = '';
-            
-            showNotification(`Buono sconto creato: €${result.valore.toFixed(2)}`, 'success');
-            loadVouchers();
+            showNotification(`Punti convertiti! Buono da €${result.valore} creato`, 'success');
+            loadUserProfile(); // Refresh user data
         } else {
             showNotification('Errore nella conversione', 'error');
         }
@@ -840,268 +564,210 @@ async function convertiPunti() {
     }
 }
 
-async function useVoucher(voucherId) {
-    try {
-        const response = await fetch(`${API_BASE}/users/use-voucher`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ voucherId })
-        });
-        
-        if (response.ok) {
-            showNotification('Buono sconto utilizzato!', 'success');
-            loadUserProfile();
-            loadVouchers();
-        } else {
-            showNotification('Errore nell\'utilizzo del buono', 'error');
-        }
-    } catch (error) {
-        console.error('Use voucher error:', error);
-        showNotification('Errore di connessione', 'error');
-    }
-}
-
-// Management functions (Gestore only)
+// Gestione functions (solo per gestori)
 async function loadGestione() {
-    if (currentUser.tipo !== 1) return;
-    
-    await loadSystemStats();
-    await loadLEDMonitor();
-}
-
-async function loadSystemStats() {
-    try {
-        const [mezziResponse, parcheggiResponse] = await Promise.all([
-            fetch(`${API_BASE}/vehicles`),
-            fetch(`${API_BASE}/parkings`)
-        ]);
-        
-        const mezzi = await mezziResponse.json();
-        const parcheggi = await parcheggiResponse.json();
-        
-        const totalMezzi = mezzi.length;
-        const mezziInUso = mezzi.filter(m => m.stato === 1).length;
-        const mezziDisponibili = mezzi.filter(m => m.stato === 0).length;
-        
-        document.getElementById('totalMezzi').textContent = totalMezzi;
-        document.getElementById('mezziInUso').textContent = mezziInUso;
-        document.getElementById('mezziDisponibili').textContent = mezziDisponibili;
-        document.getElementById('totalParcheggi').textContent = parcheggi.length;
-    } catch (error) {
-        console.error('Error loading system stats:', error);
-    }
-}
-
-async function loadLEDMonitor() {
-    try {
-        const response = await fetch(`${API_BASE}/parkings`);
-        const parcheggi = await response.json();
-        
-        const container = document.getElementById('ledMonitor');
-        container.innerHTML = '';
-        
-        for (const parcheggio of parcheggi) {
-            const detailResponse = await fetch(`${API_BASE}/parkings/${parcheggio.id}`);
-            const details = await detailResponse.json();
-            
-            const parkingDiv = document.createElement('div');
-            parkingDiv.className = 'parking-leds';
-            
-            const slotsHtml = details.slots.map(slot => {
-                const colorClass = slot.coloreLED === 0 ? 'led-verde' : 
-                                  slot.coloreLED === 1 ? 'led-rosso' : 'led-giallo';
-                return `
-                    <div class="led-slot">
-                        <div class="slot-led ${colorClass}"></div>
-                        ${slot.numero}
-                    </div>
-                `;
-            }).join('');
-            
-            parkingDiv.innerHTML = `
-                <div class="parking-name">${details.nome}</div>
-                <div class="leds-grid">${slotsHtml}</div>
-            `;
-            
-            container.appendChild(parkingDiv);
-        }
-    } catch (error) {
-        console.error('Error loading LED monitor:', error);
-    }
-}
-
-function showAddMezzoForm() {
-    document.getElementById('addMezzoForm').style.display = 'block';
-    loadParcheggiOptions();
-}
-
-function hideAddMezzoForm() {
-    document.getElementById('addMezzoForm').style.display = 'none';
-    document.getElementById('addMezzoForm').querySelector('form').reset();
-}
-
-async function loadParcheggiOptions() {
-    try {
-        const response = await fetch(`${API_BASE}/parkings`);
-        const parcheggi = await response.json();
-        
-        const select = document.getElementById('newMezzoParcheggio');
-        select.innerHTML = '<option value="">Seleziona parcheggio</option>';
-        
-        parcheggi.forEach(parcheggio => {
-            const option = document.createElement('option');
-            option.value = parcheggio.id;
-            option.textContent = parcheggio.nome;
-            select.appendChild(option);
-        });
-    } catch (error) {
-        console.error('Error loading parcheggi options:', error);
-    }
-}
-
-async function aggiungiMezzo() {
-    const modello = document.getElementById('newMezzoModello').value;
-    const tipo = parseInt(document.getElementById('newMezzoTipo').value);
-    const tariffa = parseFloat(document.getElementById('newMezzoTariffa').value);
-    const parkingId = document.getElementById('newMezzoParcheggio').value;
-    
-    if (!modello || !tariffa || !parkingId) {
-        showNotification('Compila tutti i campi', 'error');
-        return;
-    }
+    if (!currentUser || currentUser.tipo !== 1) return;
     
     try {
-        const response = await fetch(`${API_BASE}/vehicles`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ tipo, modello, tariffaPerMinuto: tariffa, parkingId })
-        });
-        
-        if (response.ok) {
-            showNotification('Mezzo aggiunto con successo', 'success');
-            hideAddMezzoForm();
-            loadSystemStats();
-        } else {
-            showNotification('Errore nell\'aggiunta del mezzo', 'error');
-        }
+        showLoading(true);
+        // Load statistics and management data
+        await loadGestioneStats();
+        showManagementTab('mezzi');
     } catch (error) {
-        console.error('Add mezzo error:', error);
-        showNotification('Errore di connessione', 'error');
+        console.error('Load gestione error:', error);
+        showNotification('Errore nel caricamento gestione', 'error');
+    } finally {
+        showLoading(false);
     }
 }
 
-function showAddParcheggioForm() {
-    document.getElementById('addParcheggioForm').style.display = 'block';
+async function loadGestioneStats() {
+    // This would need additional endpoints in your controllers
+    // For now, display placeholder data
+    document.getElementById('totalMezzi').textContent = '5';
+    document.getElementById('mezziInUso').textContent = '2';
+    document.getElementById('corseOggi').textContent = '12';
+    document.getElementById('ricaviOggi').textContent = '€24.50';
 }
 
-function hideAddParcheggioForm() {
-    document.getElementById('addParcheggioForm').style.display = 'none';
-}
-
-async function aggiungiParcheggio() {
-    const nome = document.getElementById('newParcheggioNome').value;
-    const lat = parseFloat(document.getElementById('newParcheggioLat').value);
-    const lng = parseFloat(document.getElementById('newParcheggioLng').value);
-    const capacita = parseInt(document.getElementById('newParcheggioCapacita').value);
+function showManagementTab(tabName) {
+    document.querySelectorAll('.management-tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
     
-    if (!nome || !lat || !lng || !capacita) {
-        showNotification('Compila tutti i campi', 'error');
-        return;
-    }
+    const content = document.getElementById('managementContent');
+    if (!content) return;
     
-    try {
-        const response = await fetch(`${API_BASE}/parkings`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
-            },
-            body: JSON.stringify({ nome, latitudine: lat, longitudine: lng, capacita })
-        });
-        
-        if (response.ok) {
-            showNotification('Parcheggio aggiunto con successo', 'success');
-            hideAddParcheggioForm();
-            loadSystemStats();
-            loadLEDMonitor();
-        } else {
-            showNotification('Errore nell\'aggiunta del parcheggio', 'error');
-        }
-    } catch (error) {
-        console.error('Add parcheggio error:', error);
-        showNotification('Errore di connessione', 'error');
+    switch(tabName) {
+        case 'mezzi':
+            content.innerHTML = '<p>Gestione mezzi in sviluppo...</p>';
+            break;
+        case 'parcheggi':
+            content.innerHTML = '<p>Gestione parcheggi in sviluppo...</p>';
+            break;
+        case 'utenti':
+            content.innerHTML = '<p>Gestione utenti in sviluppo...</p>';
+            break;
     }
 }
 
 // Utility functions
+function getMezzoIcon(tipo) {
+    switch(tipo) {
+        case 0: return '<i class="fas fa-bicycle"></i>';
+        case 1: return '<i class="fas fa-bicycle"></i>';
+        case 2: return '<i class="fas fa-motorcycle"></i>';
+        default: return '<i class="fas fa-bicycle"></i>';
+    }
+}
+
+function getTipoText(tipo) {
+    switch(tipo) {
+        case 0: return 'Bici Muscolare';
+        case 1: return 'Bici Elettrica';
+        case 2: return 'Monopattino';
+        default: return 'Sconosciuto';
+    }
+}
+
+function getStatusClass(stato) {
+    switch(stato) {
+        case 0: return 'available';
+        case 1: return 'in-use';
+        case 2: return 'maintenance';
+        case 3: return 'low-battery';
+        default: return 'unknown';
+    }
+}
+
+function getStatusText(stato) {
+    switch(stato) {
+        case 0: return 'Disponibile';
+        case 1: return 'In Uso';
+        case 2: return 'Manutenzione';
+        case 3: return 'Batteria Scarica';
+        default: return 'Sconosciuto';
+    }
+}
+
+function getCorseStatusText(stato) {
+    switch(stato) {
+        case 0: return 'In Corso';
+        case 1: return 'Completata';
+        case 2: return 'Annullata';
+        default: return 'Sconosciuto';
+    }
+}
+
+function formatDuration(duration) {
+    if (!duration) return '00:00:00';
+    
+    // Duration is in TimeSpan format (hh:mm:ss)
+    return duration;
+}
+
+function startRideTimer() {
+    if (rideTimer) clearInterval(rideTimer);
+    
+    rideTimer = setInterval(updateRideTimer, 1000);
+}
+
+function updateRideTimer() {
+    if (!activeRide) return;
+    
+    const start = new Date(activeRide.dataInizio);
+    const now = new Date();
+    const elapsed = Math.floor((now - start) / 1000);
+    
+    const hours = Math.floor(elapsed / 3600);
+    const minutes = Math.floor((elapsed % 3600) / 60);
+    const seconds = elapsed % 60;
+    
+    const duration = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    document.getElementById('rideDuration').textContent = duration;
+    
+    // Calculate cost (rough estimate)
+    const cost = (elapsed / 60) * 0.10; // €0.10 per minute
+    document.getElementById('rideCost').textContent = cost.toFixed(2);
+    
+    // Calculate eco points for muscle bikes
+    const ecoPoints = Math.floor(elapsed / 60) * 2; // 2 points per minute
+    document.getElementById('rideEcoPoints').textContent = ecoPoints;
+}
+
+function updateEcoPointsProgress() {
+    if (!currentUser) return;
+    
+    const points = currentUser.puntiEco || 0;
+    const progress = (points % 100) / 100 * 100;
+    
+    const progressBar = document.getElementById('ecoProgressBar');
+    if (progressBar) {
+        progressBar.style.width = progress + '%';
+    }
+    
+    const currentPointsEl = document.getElementById('currentEcoPoints');
+    if (currentPointsEl) {
+        currentPointsEl.textContent = points;
+    }
+    
+    const convertBtn = document.getElementById('convertEcoBtn');
+    if (convertBtn) {
+        convertBtn.disabled = points < 100;
+    }
+}
+
 function showNotification(message, type = 'info') {
+    const container = document.getElementById('notifications');
+    if (!container) return;
+    
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
-    notification.textContent = message;
+    notification.innerHTML = `
+        <span>${message}</span>
+        <button onclick="this.parentElement.remove()">&times;</button>
+    `;
     
-    document.getElementById('notifications').appendChild(notification);
+    container.appendChild(notification);
     
+    // Auto remove after 5 seconds
     setTimeout(() => {
-        notification.remove();
+        if (notification.parentElement) {
+            notification.remove();
+        }
     }, 5000);
 }
 
-// Additional CSS for modal
-const modalCSS = `
-.modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
+function showLoading(show) {
+    const spinner = document.getElementById('loadingSpinner');
+    if (spinner) {
+        spinner.style.display = show ? 'flex' : 'none';
+    }
 }
 
-.modal-content {
-    background: white;
-    border-radius: 15px;
-    padding: 2rem;
-    max-width: 600px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
+// Additional utility functions for parcheggio details
+async function loadParcheggioDetails(parcheggioId) {
+    try {
+        const response = await fetch(`${API_BASE}/parcheggi/${parcheggioId}`, {
+            headers: {
+                'Authorization': `Bearer ${authToken}`
+            }
+        });
+        
+        if (response.ok) {
+            const parcheggio = await response.json();
+            showParcheggioModal(parcheggio);
+        } else {
+            showNotification('Errore nel caricamento dettagli parcheggio', 'error');
+        }
+    } catch (error) {
+        console.error('Load parcheggio details error:', error);
+        showNotification('Errore di connessione', 'error');
+    }
 }
 
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    border-bottom: 2px solid #f1f3f4;
-    padding-bottom: 1rem;
+function showParcheggioModal(parcheggio) {
+    // Simple modal implementation
+    alert(`Parcheggio: ${parcheggio.nome}\nSlots disponibili: ${parcheggio.slotsDisponibili}/${parcheggio.capacita}\nMezzi presenti: ${parcheggio.mezziPresenti?.length || 0}`);
 }
-
-.no-results {
-    text-align: center;
-    padding: 2rem;
-    color: #666;
-    font-style: italic;
-}
-
-.mezzo-item {
-    background: #f8f9fa;
-    padding: 0.5rem;
-    border-radius: 5px;
-    margin-bottom: 0.5rem;
-}
-`;
-
-// Add modal CSS to document
-const style = document.createElement('style');
-style.textContent = modalCSS;
-document.head.appendChild(style);

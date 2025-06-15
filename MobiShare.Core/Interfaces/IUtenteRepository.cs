@@ -7,7 +7,7 @@ namespace MobiShare.Core.Interfaces
     {
         Task<Utente?> GetByUsernameAsync(string username);
         Task<Utente?> GetByEmailAsync(string email);
-        Task<IEnumerable<Utente>> GetByTypeAsync(UserType type);
+        Task<IEnumerable<Utente>> GetByTypeAsync(TipoUtente type);
         Task<bool> UpdateCreditoAsync(string utenteId, decimal nuovoCredito);
         Task<bool> UpdatePuntiEcoAsync(string utenteId, int nuoviPunti);
     }

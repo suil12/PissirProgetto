@@ -22,7 +22,7 @@ namespace MobiShare.Infrastructure.Repositories
             return await _dbSet.FirstOrDefaultAsync(u => u.Email == email);
         }
 
-        public async Task<IEnumerable<Utente>> GetByTypeAsync(UserType type)
+        public async Task<IEnumerable<Utente>> GetByTypeAsync(TipoUtente type)
         {
             return await _dbSet.Where(u => u.Tipo == type).ToListAsync();
         }

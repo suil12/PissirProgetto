@@ -17,7 +17,7 @@ namespace MobiShare.Core.Services
             _puntiEcoService = puntiEcoService;
         }
 
-        public async Task<Utente?> RegistraAsync(string username, string email, string password, UserType tipo)
+        public async Task<Utente?> RegistraAsync(string username, string email, string password, TipoUtente tipo)
         {
             // Verifica se username o email già esistono
             if (await _utenteRepository.GetByUsernameAsync(username) != null)
@@ -32,8 +32,8 @@ namespace MobiShare.Core.Services
                 Email = email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
                 Tipo = tipo,
-                Credito = tipo == UserType.Cliente ? 5.00m : 0m, // Bonus registrazione
-                Stato = UserStatus.Attivo
+                Credito = tipo == TipoUtente.Cliente ? 5.00m : 0m, // Bonus registrazione
+                Stato = StatoUtente.Attivo
             };
 
             return await _utenteRepository.AddAsync(utente);
@@ -45,7 +45,7 @@ namespace MobiShare.Core.Services
             if (utente == null || !BCrypt.Net.BCrypt.Verify(password, utente.PasswordHash))
                 return null;
 
-            if (utente.Stato != UserStatus.Attivo)
+            if (utente.Stato != StatoUtente.Attivo)
                 return null;
 
             return utente;
@@ -93,8 +93,15 @@ namespace MobiShare.Core.Services
             await UpdateCreditoAsync(utenteId, buono.Valore);
             buono.Stato = StatoBuono.Utilizzato;
 
-            await _utenteRepository.UpdateAsync(utente);
+            if (utente != null)
+                await _utenteRepository.UpdateAsync(utente);
             return true;
+        }
+
+        public async Task<bool> VerificaCreditoSufficienteAsync(string utenteId, decimal importoRichiesto)
+        {
+            var utente = await _utenteRepository.GetByIdAsync(utenteId);
+            return utente != null && utente.Credito >= importoRichiesto;
         }
     }
 }

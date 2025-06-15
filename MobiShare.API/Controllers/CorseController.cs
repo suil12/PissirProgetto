@@ -18,8 +18,8 @@ namespace MobiShare.API.Controllers
             _corsaService = corsaService;
         }
 
-        [HttpPost("inizia")]
-        public async Task<ActionResult<CorsaDto>> IniziaCorsa(IniziaCorsaDto dto)
+        [HttpPost("start")]
+        public async Task<ActionResult<CorsaDto>> StartRide(IniziaCorsaDto dto)
         {
             var utenteId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(utenteId))
@@ -42,8 +42,8 @@ namespace MobiShare.API.Controllers
             return Ok(corsaDto);
         }
 
-        [HttpPut("{id}/termina")]
-        public async Task<ActionResult<CorsaDto>> TerminaCorsa(string id, TerminaCorsaDto dto)
+        [HttpPut("{id}/end")]
+        public async Task<ActionResult<CorsaDto>> EndRide(string id, TerminaCorsaDto dto)
         {
             var corsa = await _corsaService.TerminaCorsaAsync(id, dto.ParcheggioDestinazioneId);
             if (corsa == null)
@@ -67,8 +67,8 @@ namespace MobiShare.API.Controllers
             return Ok(corsaDto);
         }
 
-        [HttpGet("attiva")]
-        public async Task<ActionResult<CorsaDto>> GetCorsaAttiva()
+        [HttpGet("active")]
+        public async Task<ActionResult<CorsaDto>> GetActiveRide()
         {
             var utenteId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(utenteId))
@@ -91,8 +91,8 @@ namespace MobiShare.API.Controllers
             return Ok(corsaDto);
         }
 
-        [HttpGet("storico")]
-        public async Task<ActionResult<IEnumerable<CorsaDto>>> GetStoricoRiode()
+        [HttpGet("history")]
+        public async Task<ActionResult<IEnumerable<CorsaDto>>> GetRideHistory()
         {
             var utenteId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(utenteId))

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MobiShare.API.DTOs;
+using MobiShare.Core.Entities;
 using MobiShare.Core.Interfaces;
 using MobiShare.Core.Enums;
 

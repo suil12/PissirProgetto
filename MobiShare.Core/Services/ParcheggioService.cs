@@ -67,5 +67,71 @@ namespace MobiShare.Core.Services
         {
             return await _slotRepository.UpdateStatoAsync(slotId, stato);
         }
+
+        // Implementazione dei metodi richiesti dall'interfaccia IParcheggioService
+        public async Task<Parcheggio?> GetParcheggioByIdAsync(string id)
+        {
+            return await _parcheggioRepository.GetByIdAsync(id);
+        }
+
+        public async Task<IEnumerable<Slot>> GetSlotsByParcheggioAsync(string parcheggioId)
+        {
+            return await _slotRepository.GetByParcheggioAsync(parcheggioId);
+        }
+
+        public async Task<bool> AggiornaStatoSlotAsync(string slotId, StatoSlot stato)
+        {
+            return await UpdateStatoSlotAsync(slotId, stato);
+        }
+
+        public async Task<bool> AggiornaColoreLuceSlotAsync(string slotId, ColoreLuce colore)
+        {
+            return await _slotRepository.UpdateColoreLuceAsync(slotId, colore);
+        }
+
+        public async Task<int> GetPostiLiberiAsync(string parcheggioId)
+        {
+            var slots = await _slotRepository.GetByParcheggioAsync(parcheggioId);
+            return slots.Count(s => s.Stato == StatoSlot.Libero);
+        }
+
+        public async Task<int> GetPostiOccupatiAsync(string parcheggioId)
+        {
+            var slots = await _slotRepository.GetByParcheggioAsync(parcheggioId);
+            return slots.Count(s => s.Stato == StatoSlot.Occupato);
+        }
+
+        public async Task<Parcheggio> CreaParcheggioAsync(string nome, string indirizzo, double lat, double lng, int numeroSlots)
+        {
+            var parcheggio = new Parcheggio
+            {
+                Nome = nome,
+                Indirizzo = indirizzo,
+                Latitudine = lat,
+                Longitudine = lng,
+                Capacita = numeroSlots
+            };
+
+            var parcheggioCreato = await _parcheggioRepository.AddAsync(parcheggio);
+
+            // Crea gli slot per il parcheggio
+            for (int i = 1; i <= numeroSlots; i++)
+            {
+                var slot = new Slot
+                {
+                    Numero = i,
+                    ParcheggiId = parcheggioCreato.Id,
+                    Stato = StatoSlot.Libero,
+                    SensoreLuce = new DatiSensore
+                    {
+                        Colore = ColoreLuce.Verde,
+                        StatoAttivo = true
+                    }
+                };
+                await _slotRepository.AddAsync(slot);
+            }
+
+            return parcheggioCreato;
+        }
     }
 }

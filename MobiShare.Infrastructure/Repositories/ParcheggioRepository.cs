@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using MobiShare.Core.Entities;
+using MobiShare.Core.Enums;
 using MobiShare.Core.Interfaces;
 using MobiShare.Infrastructure.Data;
 

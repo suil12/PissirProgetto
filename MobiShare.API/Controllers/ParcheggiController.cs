@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MobiShare.API.DTOs;
+using MobiShare.Core.Entities;
 using MobiShare.Core.Interfaces;
 using MobiShare.Core.Enums;
 
@@ -86,7 +87,7 @@ namespace MobiShare.API.Controllers
         [Authorize(Roles = "Gestore")]
         public async Task<ActionResult<ParcheggioDto>> CreaParcheggio(CreaParcheggioDto dto)
         {
-            var parcheggio = await _parcheggioService.CreaParcheggioAsync(dto.Nome, dto.Latitudine, dto.Longitudine, dto.Capacita);
+            var parcheggio = await _parcheggioService.CreaParcheggioAsync(dto.Nome, dto.Indirizzo, dto.Latitudine, dto.Longitudine, dto.Capacita);
 
             var parcheggioDto = new ParcheggioDto
             {

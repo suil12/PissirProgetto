@@ -9,5 +9,6 @@ namespace MobiShare.Core.Interfaces
         Task<IEnumerable<Slot>> GetByStatoAsync(StatoSlot stato);
         Task<Slot?> GetSlotDisponibileInParcheggioAsync(string parcheggioId);
         Task<bool> UpdateStatoAsync(string slotId, StatoSlot stato);
+        Task<bool> UpdateColoreLuceAsync(string slotId, ColoreLuce colore);
     }
 }

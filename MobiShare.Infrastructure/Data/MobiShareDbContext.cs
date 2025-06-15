@@ -336,9 +336,9 @@ namespace MobiShare.Infrastructure.Data
                 Username = "admin",
                 Email = "admin@mobishare.org",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
-                Tipo = UserType.Gestore,
+                Tipo = TipoUtente.Gestore,
                 Credito = 0,
-                Stato = UserStatus.Attivo
+                Stato = StatoUtente.Attivo
             };
 
             var testUser = new Utente
@@ -347,10 +347,10 @@ namespace MobiShare.Infrastructure.Data
                 Username = "mario.rossi",
                 Email = "mario@email.com",
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword("password123"),
-                Tipo = UserType.Cliente,
+                Tipo = TipoUtente.Cliente,
                 Credito = 25.00m,
                 PuntiEco = 150,
-                Stato = UserStatus.Attivo
+                Stato = StatoUtente.Attivo
             };
 
             modelBuilder.Entity<Utente>().HasData(adminUser, testUser);

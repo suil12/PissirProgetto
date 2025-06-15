@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using MobiShare.Core.Enums;
 using MobiShare.Core.Interfaces;
 using MobiShare.Core.Models;
+using MobiShare.IoT.Models;
 
 namespace MobiShare.IoT.Services
 {
@@ -17,8 +18,13 @@ namespace MobiShare.IoT.Services
         private readonly MqttConfig _config;
         private IManagedMqttClient? _clientMqtt;
 
+        public event EventHandler<MqttMessageReceivedEventArgs>? MessageReceived;
+        public event EventHandler<EventArgs>? Connected;
+        public event EventHandler<EventArgs>? Disconnected;
         public event EventHandler<AggiornamentoStatoMezzoEventArgs>? StatoMezzoAggiornato;
         public event EventHandler<AggiornamentoSensoreSlotEventArgs>? SensoreSlotAggiornato;
+
+        public bool IsConnected => _clientMqtt?.IsConnected ?? false;
 
         public ServizioMqtt(ILogger<ServizioMqtt> logger, IOptions<MqttConfig> config)
         {
@@ -26,29 +32,42 @@ namespace MobiShare.IoT.Services
             _config = config.Value;
         }
 
-        public async Task AvviaAsync()
+        public async Task<bool> ConnectAsync()
         {
-            var mqttFactory = new MqttFactory();
-            _clientMqtt = mqttFactory.CreateManagedMqttClient();
+            try
+            {
+                var mqttFactory = new MqttFactory();
+                _clientMqtt = mqttFactory.CreateManagedMqttClient();
 
-            var options = new ManagedMqttClientOptionsBuilder()
-                .WithAutoReconnectDelay(TimeSpan.FromSeconds(5))
-                .WithClientOptions(new MqttClientOptionsBuilder()
+                var optionsBuilder = new MqttClientOptionsBuilder()
+                    .WithTcpServer(_config.Server, _config.Port)
                     .WithClientId(_config.ClientId)
-                    .WithTcpServer(_config.Host, _config.Port)
-                    .WithCredentials(_config.Username, _config.Password)
-                    .WithCleanSession()
-                    .Build())
-                .Build();
+                    .WithCleanSession(_config.CleanSession);
 
-            _clientMqtt.ApplicationMessageReceivedAsync += GestisciMessaggioRicevuto;
-            _clientMqtt.ConnectedAsync += GestisciConnessione;
-            _clientMqtt.DisconnectedAsync += GestisciDisconnessione;
+                if (!string.IsNullOrEmpty(_config.Username))
+                {
+                    optionsBuilder.WithCredentials(_config.Username, _config.Password);
+                }
 
-            await _clientMqtt.StartAsync(options);
+                var options = new ManagedMqttClientOptionsBuilder()
+                    .WithClientOptions(optionsBuilder.Build())
+                    .Build();
+
+                _clientMqtt.ApplicationMessageReceivedAsync += OnMessageReceived;
+                _clientMqtt.ConnectedAsync += OnConnected;
+                _clientMqtt.DisconnectedAsync += OnDisconnected;
+
+                await _clientMqtt.StartAsync(options);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Errore durante la connessione MQTT");
+                return false;
+            }
         }
 
-        public async Task FermaAsync()
+        public async Task DisconnectAsync()
         {
             if (_clientMqtt != null)
             {
@@ -58,195 +77,141 @@ namespace MobiShare.IoT.Services
             }
         }
 
-        public async Task PubblicaComandoMezzoAsync(string mezzoId, string comando, object? dati = null)
+        public async Task<bool> PublishAsync(string topic, object payload)
         {
-            var parcheggio = EstraiParcheggioIdDaMezzoId(mezzoId);
-            var topic = $"mobishare/parcheggi/{parcheggio}/stato/{mezzoId}";
+            if (_clientMqtt == null || !IsConnected)
+                return false;
 
-            var messaggio = new MessaggioComandoMezzo
+            try
             {
-                TipoMessaggio = comando == "SBLOCCA" ? MqttMessageType.ComandoSbloccoMezzo : MqttMessageType.ComandoBloccoMezzo,
-                MezzoId = mezzoId,
+                var jsonPayload = JsonConvert.SerializeObject(payload);
+                var message = new MqttApplicationMessageBuilder()
+                    .WithTopic(topic)
+                    .WithPayload(jsonPayload)
+                    .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                    .Build();
+
+                await _clientMqtt.EnqueueAsync(message);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Errore durante la pubblicazione del messaggio MQTT");
+                return false;
+            }
+        }
+
+        public async Task<bool> SubscribeAsync(string topic)
+        {
+            if (_clientMqtt == null || !IsConnected)
+                return false;
+
+            try
+            {
+                var topicFilter = new MqttTopicFilterBuilder()
+                    .WithTopic(topic)
+                    .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+                    .Build();
+
+                await _clientMqtt.SubscribeAsync(new[] { topicFilter });
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Errore durante la sottoscrizione MQTT");
+                return false;
+            }
+        }
+
+        public async Task<bool> UnsubscribeAsync(string topic)
+        {
+            if (_clientMqtt == null || !IsConnected)
+                return false;
+
+            try
+            {
+                await _clientMqtt.UnsubscribeAsync(topic);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Errore durante la rimozione sottoscrizione MQTT");
+                return false;
+            }
+        }
+
+        public async Task<bool> PubblicaComandoMezzoAsync(string mezzoId, string comando, object payload)
+        {
+            var topic = $"mobishare/mezzi/{mezzoId}/comandi";
+            var message = new
+            {
                 Comando = comando,
-                Dati = dati
+                Timestamp = DateTime.UtcNow,
+                Payload = payload
             };
 
-            await PubblicaAsync(topic, messaggio);
-            _logger.LogInformation("Comando {Comando} inviato al mezzo {MezzoId}", comando, mezzoId);
+            return await PublishAsync(topic, message);
         }
 
-        public async Task PubblicaAggiornamentoSlotAsync(string slotId, string parcheggioId, ColoreLuce colore)
+        public async Task<bool> PubblicaAggiornamentoSlotAsync(string slotId, string parcheggioId, ColoreLuce colore)
         {
-            var topic = $"mobishare/parcheggi/{parcheggioId}/slots/{slotId}";
-
-            var messaggio = new MessaggioSensoreSlot
+            var topic = $"mobishare/parcheggi/{parcheggioId}/slots/{slotId}/led";
+            var message = new
             {
-                TipoMessaggio = MqttMessageType.AggiornamentoSensoreSlot,
-                SlotId = slotId,
-                ParcheggioId = parcheggioId,
-                ColoreLuce = colore,
-                StatoSlot = colore == ColoreLuce.Verde ? StatoSlot.Libero : StatoSlot.Occupato
+                ColoreLuce = colore.ToString(),
+                Timestamp = DateTime.UtcNow
             };
 
-            await PubblicaAsync(topic, messaggio);
-            _logger.LogInformation("Aggiornamento LED slot {SlotId} colore {Colore}", slotId, colore);
+            return await PublishAsync(topic, message);
         }
 
-        public async Task PubblicaNotificaSistemaAsync(string messaggio, string? mezzoId = null)
+        public async Task<bool> PubblicaNotificaSistemaAsync(string messaggio, object? dati = null)
         {
             var topic = "mobishare/sistema/notifiche";
-
-            var notifica = new MessaggioMqtt
+            var message = new
             {
-                TipoMessaggio = MqttMessageType.NotificaSistema,
-                MezzoId = mezzoId,
-                Dati = new { Messaggio = messaggio }
+                Messaggio = messaggio,
+                Dati = dati,
+                Timestamp = DateTime.UtcNow
             };
 
-            await PubblicaAsync(topic, notifica);
-            _logger.LogInformation("Notifica sistema: {Messaggio}", messaggio);
+            return await PublishAsync(topic, message);
         }
 
-        public async Task SottoscriviAggiornamentoMezziAsync()
-        {
-            var topic = "mobishare/parcheggi/+/mezzi";
-            await SottoscriviAsync(topic);
-            _logger.LogInformation("Sottoscritto a aggiornamenti mezzi: {Topic}", topic);
-        }
-
-        public async Task SottoscriviSensoriSlotAsync()
-        {
-            var topic = "mobishare/parcheggi/+/slots/+";
-            await SottoscriviAsync(topic);
-            _logger.LogInformation("Sottoscritto a sensori slot: {Topic}", topic);
-        }
-
-        private async Task PubblicaAsync(string topic, object messaggio)
-        {
-            if (_clientMqtt == null || !_clientMqtt.IsConnected)
-            {
-                _logger.LogWarning("Client MQTT non connesso, impossibile pubblicare su {Topic}", topic);
-                return;
-            }
-
-            var payload = JsonConvert.SerializeObject(messaggio);
-            var messaggioMqtt = new MqttApplicationMessageBuilder()
-                .WithTopic(topic)
-                .WithPayload(payload)
-                .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                .WithRetainFlag(false)
-                .Build();
-
-            await _clientMqtt.EnqueueAsync(messaggioMqtt);
-        }
-
-        private async Task SottoscriviAsync(string topic)
-        {
-            if (_clientMqtt == null)
-                return;
-
-            await _clientMqtt.SubscribeAsync(new MqttTopicFilterBuilder()
-                .WithTopic(topic)
-                .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
-                .Build());
-        }
-
-        private Task GestisciMessaggioRicevuto(MqttApplicationMessageReceivedEventArgs args)
+        private Task OnMessageReceived(MqttApplicationMessageReceivedEventArgs e)
         {
             try
             {
-                var topic = args.ApplicationMessage.Topic;
-                var payload = System.Text.Encoding.UTF8.GetString(args.ApplicationMessage.Payload);
-
-                _logger.LogDebug("Messaggio ricevuto su {Topic}: {Payload}", topic, payload);
-
-                if (topic.Contains("/mezzi"))
+                var payload = System.Text.Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
+                var eventArgs = new MqttMessageReceivedEventArgs
                 {
-                    GestisciAggiornamentoStatoMezzo(payload);
-                }
-                else if (topic.Contains("/slots/"))
-                {
-                    GestisciAggiornamentoSensoreSlot(payload);
-                }
+                    Topic = e.ApplicationMessage.Topic,
+                    Payload = payload,
+                    Timestamp = DateTime.UtcNow
+                };
+
+                MessageReceived?.Invoke(this, eventArgs);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Errore processamento messaggio MQTT");
+                _logger.LogError(ex, "Errore durante l'elaborazione del messaggio MQTT");
             }
 
             return Task.CompletedTask;
         }
 
-        private void GestisciAggiornamentoStatoMezzo(string payload)
+        private Task OnConnected(MqttClientConnectedEventArgs e)
         {
-            try
-            {
-                var messaggio = JsonConvert.DeserializeObject<MessaggioStatoMezzo>(payload);
-                if (messaggio?.MezzoId != null)
-                {
-                    var eventArgs = new AggiornamentoStatoMezzoEventArgs
-                    {
-                        MezzoId = messaggio.MezzoId,
-                        ParcheggioId = messaggio.ParcheggioId ?? "",
-                        Stato = messaggio.Stato,
-                        PercentualeBatteria = messaggio.PercentualeBatteria,
-                        Latitudine = messaggio.Latitudine,
-                        Longitudine = messaggio.Longitudine,
-                        Timestamp = messaggio.Timestamp
-                    };
-
-                    StatoMezzoAggiornato?.Invoke(this, eventArgs);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Errore processamento aggiornamento mezzo");
-            }
-        }
-
-        private void GestisciAggiornamentoSensoreSlot(string payload)
-        {
-            try
-            {
-                var messaggio = JsonConvert.DeserializeObject<MessaggioSensoreSlot>(payload);
-                if (messaggio?.SlotId != null)
-                {
-                    var eventArgs = new AggiornamentoSensoreSlotEventArgs
-                    {
-                        SlotId = messaggio.SlotId,
-                        ParcheggioId = messaggio.ParcheggioId ?? "",
-                        Stato = messaggio.StatoSlot,
-                        ColoreLuce = messaggio.ColoreLuce,
-                        MezzoId = messaggio.MezzoPresenteId,
-                        Timestamp = messaggio.Timestamp
-                    };
-
-                    SensoreSlotAggiornato?.Invoke(this, eventArgs);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Errore processamento sensore slot");
-            }
-        }
-
-        private Task GestisciConnessione(MqttClientConnectedEventArgs args)
-        {
-            _logger.LogInformation("Client MQTT connesso al broker");
+            _logger.LogInformation("MQTT Client connesso");
+            Connected?.Invoke(this, EventArgs.Empty);
             return Task.CompletedTask;
         }
 
-        private Task GestisciDisconnessione(MqttClientDisconnectedEventArgs args)
+        private Task OnDisconnected(MqttClientDisconnectedEventArgs e)
         {
-            _logger.LogWarning("Client MQTT disconnesso: {Reason}", args.Reason);
+            _logger.LogWarning("MQTT Client disconnesso: {Reason}", e.Reason);
+            Disconnected?.Invoke(this, EventArgs.Empty);
             return Task.CompletedTask;
-        }
-
-        private string EstraiParcheggioIdDaMezzoId(string mezzoId)
-        {
-            // Implementa logica per estrarre ID parcheggio da ID mezzo
-            // Per ora ritorna un parcheggio di default
-            return "PARK_CENTRO";
         }
     }
 }

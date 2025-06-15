@@ -47,5 +47,16 @@ namespace MobiShare.Infrastructure.Repositories
             await UpdateAsync(slot);
             return true;
         }
+
+        public async Task<bool> UpdateColoreLuceAsync(string slotId, ColoreLuce colore)
+        {
+            var slot = await _dbSet.Include(s => s.SensoreLuce).FirstOrDefaultAsync(s => s.Id == slotId);
+            if (slot?.SensoreLuce == null) return false;
+
+            slot.SensoreLuce.Colore = colore;
+            slot.UltimoAggiornamento = DateTime.UtcNow;
+            await UpdateAsync(slot);
+            return true;
+        }
     }
 }

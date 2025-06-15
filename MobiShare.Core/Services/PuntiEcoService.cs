@@ -65,5 +65,36 @@ namespace MobiShare.Core.Services
         {
             return punti >= PuntiPerConversioneSconto && punti % PuntiPerConversioneSconto == 0;
         }
+
+        // Implementazione dei metodi richiesti dall'interfaccia IPuntiEcoService
+        public decimal CalcolaPuntiEco(TimeSpan durata, bool isBiciMuscolare)
+        {
+            if (isBiciMuscolare)
+            {
+                return (decimal)durata.TotalMinutes * PuntiPerMinutoMuscolare;
+            }
+            return 0;
+        }
+
+        public async Task<BuonoSconto?> ConvertiPuntiInBuono(string utenteId, int punti)
+        {
+            return await ConvertiPuntiInScontoAsync(utenteId, punti);
+        }
+
+        public decimal GetValoreBuonoByPunti(int punti)
+        {
+            return CalcolaValoreSconto(punti);
+        }
+
+        public async Task<bool> VerificaPuntiSufficienti(string utenteId, int puntiRichiesti)
+        {
+            var utente = await _utenteRepository.GetByIdAsync(utenteId);
+            return utente != null && utente.PuntiEco >= puntiRichiesti;
+        }
+
+        public async Task<bool> AggiornaPuntiUtenteAsync(string utenteId, int nuoviPunti)
+        {
+            return await _utenteRepository.UpdatePuntiEcoAsync(utenteId, nuoviPunti);
+        }
     }
 }

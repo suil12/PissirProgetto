@@ -1,5 +1,15 @@
 using MobiShare.Core.Enums;
 
+namespace MobiShare.Core.Models
+{
+    public class MqttMessageReceivedEventArgs : EventArgs
+    {
+        public string Topic { get; set; } = string.Empty;
+        public string Payload { get; set; } = string.Empty;
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    }
+}
+
 namespace MobiShare.Core.Interfaces
 {
     public class AggiornamentoStatoMezzoEventArgs : EventArgs

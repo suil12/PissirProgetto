@@ -16,13 +16,13 @@ namespace MobiShare.Core.Entities
         [Required]
         public string PasswordHash { get; set; } = string.Empty;
         
-        public UserType Tipo { get; set; }
+        public TipoUtente Tipo { get; set; }
         
         public decimal Credito { get; set; } = 0;
         
         public int PuntiEco { get; set; } = 0;
         
-        public UserStatus Stato { get; set; } = UserStatus.Attivo;
+        public StatoUtente Stato { get; set; } = StatoUtente.Attivo;
         
         public DateTime DataRegistrazione { get; set; } = DateTime.UtcNow;
         

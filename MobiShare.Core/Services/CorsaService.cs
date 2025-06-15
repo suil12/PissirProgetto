@@ -163,5 +163,46 @@ namespace MobiShare.Core.Services
 
             return _puntiEcoService.CalcolaPuntiEco(corsa);
         }
+
+        // Metodi wrapper per implementare l'interfaccia ICorsaService
+        public async Task<Corsa?> IniziaCorsa(string utenteId, string mezzoId)
+        {
+            return await IniziaCorsaAsync(utenteId, mezzoId);
+        }
+
+        public async Task<Corsa?> TerminaCorsa(string corsaId)
+        {
+            // Per terminare una corsa, dobbiamo trovare un parcheggio disponibile
+            var corsa = await _corsaRepository.GetByIdAsync(corsaId);
+            if (corsa == null) return null;
+
+            // Trova il parcheggio più vicino o usa quello di partenza
+            return await TerminaCorsaAsync(corsaId, corsa.ParcheggioDiPartenzaId);
+        }
+
+        public async Task<IEnumerable<Corsa>> GetStoricoCorse(string utenteId)
+        {
+            return await GetStoricoCorseAsync(utenteId);
+        }
+
+        public decimal CalcolaCosto(TimeSpan durata, TipoMezzo tipoMezzo)
+        {
+            // Calcolo base del costo in base al tipo di mezzo
+            var tariffaPerMinuto = tipoMezzo switch
+            {
+                TipoMezzo.BiciMuscolare => 0.05m,
+                TipoMezzo.BiciElettrica => 0.10m,
+                TipoMezzo.Monopattino => 0.15m,
+                _ => 0.10m
+            };
+
+            return (decimal)durata.TotalMinutes * tariffaPerMinuto;
+        }
+
+        public async Task<bool> VerificaDisponibilitaMezzo(string mezzoId)
+        {
+            var mezzo = await _mezzoRepository.GetByIdAsync(mezzoId);
+            return mezzo != null && mezzo.Stato == StatoMezzo.Disponibile;
+        }
     }
 }

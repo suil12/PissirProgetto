@@ -1,8 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="MQTTnet" Version="4.3.7.1207" />
@@ -13,5 +15,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\MobiShare.Core\MobiShare.Core.csproj" />
+    <ProjectReference Include="..\MobiShare.Infrastructure\MobiShare.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

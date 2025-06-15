@@ -1,43 +1,37 @@
-
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using MobiShare.Core.Interfaces;
-using MobiShare.Core.Entities;
 using MobiShare.Core.Enums;
 
 namespace MobiShare.API.Controllers
 {
-    /// <summary>
-    /// Controller per ricevere dati dal microservizio MQTT Gateway
-    /// </summary>
     [ApiController]
     [Route("api/iot")]
     public class IoTController : ControllerBase
     {
         private readonly ILogger<IoTController> _logger;
         private readonly IMezzoService _mezzoService;
-        private readonly IParcheggioService _parcheggioService;
         private readonly ISlotService _slotService;
-        private readonly INotificationService _notificationService;
+        private readonly IParcheggioService _parcheggioService;
+        private readonly IMqttService _mqttService;
 
         public IoTController(
             ILogger<IoTController> logger,
             IMezzoService mezzoService,
-            IParcheggioService parcheggioService,
             ISlotService slotService,
-            INotificationService notificationService)
+            IParcheggioService parcheggioService,
+            IMqttService mqttService)
         {
             _logger = logger;
             _mezzoService = mezzoService;
-            _parcheggioService = parcheggioService;
             _slotService = slotService;
-            _notificationService = notificationService;
+            _parcheggioService = parcheggioService;
+            _mqttService = mqttService;
         }
 
         /// <summary>
-        /// Riceve aggiornamenti batteria dai dispositivi tramite gateway MQTT
+        /// Aggiorna il livello di batteria di un mezzo tramite IoT
         /// </summary>
-        [HttpPost("mezzi/{mezzoId}/batteria")]
+        [HttpPut("mezzi/{mezzoId}/battery")]
         public async Task<IActionResult> UpdateBatteryLevel(string mezzoId, [FromBody] BatteryUpdateRequest request)
         {
             try
@@ -45,31 +39,24 @@ namespace MobiShare.API.Controllers
                 _logger.LogInformation("Aggiornamento batteria ricevuto per mezzo {MezzoId}: {BatteryLevel}%",
                     mezzoId, request.BatteryLevel);
 
-                var mezzo = await _mezzoService.GetByIdAsync(mezzoId);
-                if (mezzo == null)
+                var result = await _mezzoService.AggiornaBatteriaAsync(mezzoId, request.BatteryLevel);
+
+                if (!result)
                 {
-                    return NotFound($"Mezzo {mezzoId} non trovato");
+                    return NotFound($"Mezzo {mezzoId} non trovato o non supporta batteria");
                 }
 
-                // Aggiorna livello batteria
-                mezzo.PercentualeBatteria = request.BatteryLevel;
-
-                // Controlla se la batteria è scarica
-                if (request.BatteryLevel <= 20 && mezzo.Stato != StatoMezzo.BatteriaScarica)
+                // Se batteria < 20%, pubblica notifica di batteria scarica
+                if (request.BatteryLevel < 20)
                 {
-                    mezzo.Stato = StatoMezzo.BatteriaScarica;
-                    await _notificationService.SendBatteryLowAlertAsync(mezzoId, request.BatteryLevel);
+                    await _mqttService.PubblicaEventoBatteriaScaricaAsync(mezzoId, request.BatteryLevel);
                     _logger.LogWarning("Batteria scarica per mezzo {MezzoId}: {BatteryLevel}%", mezzoId, request.BatteryLevel);
                 }
-                else if (request.BatteryLevel > 20 && mezzo.Stato == StatoMezzo.BatteriaScarica)
-                {
-                    mezzo.Stato = StatoMezzo.Disponibile;
-                    _logger.LogInformation("Batteria ripristinata per mezzo {MezzoId}: {BatteryLevel}%", mezzoId, request.BatteryLevel);
-                }
 
-                await _mezzoService.UpdateAsync(mezzo);
+                // Pubblica stato batteria aggiornato
+                await _mqttService.PubblicaStatoBatteriaAsync(mezzoId, request.BatteryLevel, request.IsCharging);
 
-                return Ok(new { Success = true, Message = "Batteria aggiornata con successo" });
+                return Ok(new { Success = true, BatteryLevel = request.BatteryLevel });
             }
             catch (Exception ex)
             {
@@ -79,15 +66,15 @@ namespace MobiShare.API.Controllers
         }
 
         /// <summary>
-        /// Riceve aggiornamenti posizione GPS dai mezzi
+        /// Aggiorna lo stato di un mezzo tramite IoT
         /// </summary>
-        [HttpPost("mezzi/{mezzoId}/posizione")]
-        public async Task<IActionResult> UpdateVehiclePosition(string mezzoId, [FromBody] PositionUpdateRequest request)
+        [HttpPut("mezzi/{mezzoId}/state")]
+        public async Task<IActionResult> UpdateVehicleState(string mezzoId, [FromBody] VehicleStateUpdateRequest request)
         {
             try
             {
-                _logger.LogDebug("Aggiornamento posizione ricevuto per mezzo {MezzoId}: {Lat}, {Lng}",
-                    mezzoId, request.Latitude, request.Longitude);
+                _logger.LogInformation("Aggiornamento stato ricevuto per mezzo {MezzoId}: {State}",
+                    mezzoId, request.State);
 
                 var mezzo = await _mezzoService.GetByIdAsync(mezzoId);
                 if (mezzo == null)
@@ -95,31 +82,39 @@ namespace MobiShare.API.Controllers
                     return NotFound($"Mezzo {mezzoId} non trovato");
                 }
 
-                // Aggiorna posizione
-                mezzo.Latitudine = request.Latitude;
-                mezzo.Longitudine = request.Longitude;
+                // Aggiorna stato nel database
+                var result = await _mezzoService.ImpostaStatoManutenzioneAsync(
+                    mezzoId,
+                    request.State == StatoMezzo.Manutenzione
+                );
 
-                await _mezzoService.UpdateAsync(mezzo);
+                if (!result)
+                {
+                    return BadRequest("Impossibile aggiornare stato mezzo");
+                }
 
-                return Ok(new { Success = true, Message = "Posizione aggiornata con successo" });
+                // Pubblica stato aggiornato
+                await _mqttService.PubblicaStatoMezzoAsync(mezzoId, request.State);
+
+                return Ok(new { Success = true, State = request.State });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Errore nell'aggiornamento posizione per mezzo {MezzoId}", mezzoId);
+                _logger.LogError(ex, "Errore nell'aggiornamento stato per mezzo {MezzoId}", mezzoId);
                 return StatusCode(500, "Errore interno del server");
             }
         }
 
         /// <summary>
-        /// Riceve aggiornamenti stato slot dai sensori parcheggio
+        /// Aggiorna lo stato di occupazione di uno slot tramite IoT
         /// </summary>
-        [HttpPost("slots/{slotId}/stato")]
+        [HttpPut("slots/{slotId}/status")]
         public async Task<IActionResult> UpdateSlotStatus(string slotId, [FromBody] SlotStatusUpdateRequest request)
         {
             try
             {
-                _logger.LogDebug("Aggiornamento stato slot {SlotId}: Occupato={IsOccupied}",
-                    slotId, request.IsOccupied);
+                _logger.LogInformation("Aggiornamento slot ricevuto per slot {SlotId}: {State}",
+                    slotId, request.State);
 
                 var slot = await _slotService.GetByIdAsync(slotId);
                 if (slot == null)
@@ -127,44 +122,55 @@ namespace MobiShare.API.Controllers
                     return NotFound($"Slot {slotId} non trovato");
                 }
 
-                // Aggiorna stato slot
-                var nuovoStato = request.IsOccupied ? StatoSlot.Occupato : StatoSlot.Libero;
-
-                if (slot.Stato != nuovoStato)
+                // Aggiorna stato slot nel database
+                var result = await _slotService.UpdateStatoAsync(slotId, request.State);
+                if (!result)
                 {
-                    slot.Stato = nuovoStato;
-
-                    // Aggiorna anche il sensore luce se presente
-                    if (slot.SensoreLuce != null)
-                    {
-                        slot.SensoreLuce.Colore = request.IsOccupied ? ColoreLuce.Rosso : ColoreLuce.Verde;
-                        slot.SensoreLuce.UltimaLettura = DateTime.UtcNow;
-                    }
-
-                    await _slotService.UpdateAsync(slot);
-
-                    _logger.LogInformation("Slot {SlotId} cambiato stato da {OldStato} a {NewStato}",
-                        slotId, slot.Stato, nuovoStato);
+                    return BadRequest("Impossibile aggiornare stato slot");
                 }
 
-                return Ok(new { Success = true, Message = "Stato slot aggiornato con successo" });
+                // Se lo slot è stato occupato, assegna il mezzo
+                if (request.State == StatoSlot.Occupato && !string.IsNullOrEmpty(request.MezzoId))
+                {
+                    await _slotService.AssegnaMezzoAsync(slotId, request.MezzoId);
+                }
+                else if (request.State == StatoSlot.Libero)
+                {
+                    await _slotService.LiberaSlotAsync(slotId);
+                }
+
+                // Pubblica stato slot aggiornato
+                await _mqttService.PubblicaStatoSlotAsync(slotId, request.State, request.MezzoId);
+
+                // Aggiorna LED del colore appropriato
+                var coloreLed = request.State switch
+                {
+                    StatoSlot.Libero => ColoreLuce.Verde,
+                    StatoSlot.Occupato => ColoreLuce.Rosso,
+                    StatoSlot.Manutenzione => ColoreLuce.Giallo,
+                    _ => ColoreLuce.Blu
+                };
+
+                await _mqttService.PubblicaAggiornamentoLedSlotAsync(slotId, coloreLed);
+
+                return Ok(new { Success = true, State = request.State, Color = coloreLed });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Errore nell'aggiornamento stato slot {SlotId}", slotId);
+                _logger.LogError(ex, "Errore nell'aggiornamento slot {SlotId}", slotId);
                 return StatusCode(500, "Errore interno del server");
             }
         }
 
         /// <summary>
-        /// Riceve stato gateway parcheggio
+        /// Aggiorna lo stato del gateway di un parcheggio tramite IoT
         /// </summary>
-        [HttpPost("parcheggi/{parcheggioId}/gateway")]
-        public async Task<IActionResult> UpdateParkingGatewayStatus(string parcheggioId, [FromBody] GatewayStatusRequest request)
+        [HttpPut("parking/{parcheggioId}/gateway")]
+        public async Task<IActionResult> UpdateParkingGatewayStatus(string parcheggioId, [FromBody] ParkingGatewayStatusRequest request)
         {
             try
             {
-                _logger.LogInformation("Aggiornamento gateway parcheggio {ParcheggioId}: Status={Status}",
+                _logger.LogInformation("Aggiornamento gateway ricevuto per parcheggio {ParcheggioId}: {Status}",
                     parcheggioId, request.Status);
 
                 var parcheggio = await _parcheggioService.GetByIdAsync(parcheggioId);
@@ -173,120 +179,109 @@ namespace MobiShare.API.Controllers
                     return NotFound($"Parcheggio {parcheggioId} non trovato");
                 }
 
-                // Log dello stato del gateway per monitoraggio
-                // In un'implementazione completa potresti salvare questi dati per analytics
+                // Log dello stato del gateway (in futuro potrebbe essere salvato nel DB)
+                _logger.LogInformation("Gateway parcheggio {ParcheggioId}: {Status} - {Message}",
+                    parcheggioId, request.Status, request.Message);
 
-                return Ok(new { Success = true, Message = "Stato gateway registrato" });
+                // Se ci sono errori critici, invia notifica sistema
+                if (request.Status == "ERROR" || request.Status == "OFFLINE")
+                {
+                    await _mqttService.PubblicaNotificaSistemaAsync(
+                        $"Gateway parcheggio {parcheggioId} in errore: {request.Message}",
+                        new { parcheggioId, status = request.Status, timestamp = DateTime.UtcNow }
+                    );
+                }
+
+                return Ok(new { Success = true, Status = request.Status });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Errore nell'aggiornamento gateway parcheggio {ParcheggioId}", parcheggioId);
+                _logger.LogError(ex, "Errore nell'aggiornamento gateway per parcheggio {ParcheggioId}", parcheggioId);
                 return StatusCode(500, "Errore interno del server");
             }
         }
 
         /// <summary>
-        /// Riceve alert di manutenzione
+        /// Endpoint per ricevere dati generici dai sensori IoT
         /// </summary>
-        [HttpPost("maintenance/alert")]
-        public async Task<IActionResult> ReceiveMaintenanceAlert([FromBody] MaintenanceAlertRequest request)
+        [HttpPost("sensor-data")]
+        public async Task<IActionResult> ReceiveSensorData([FromBody] SensorDataRequest request)
         {
             try
             {
-                _logger.LogWarning("Alert manutenzione ricevuto per mezzo {MezzoId}: {Message}",
-                    request.MezzoId, request.Message);
+                _logger.LogDebug("Dati sensore ricevuti: {SensorType} da {DeviceId}",
+                    request.SensorType, request.DeviceId);
 
-                await _notificationService.SendMaintenanceAlertAsync(request.MezzoId, request.Message);
+                // Processa i dati in base al tipo di sensore
+                switch (request.SensorType.ToUpper())
+                {
+                    case "BATTERY":
+                        if (request.Data.ContainsKey("level") && request.Data.ContainsKey("mezzoId"))
+                        {
+                            var batteryLevel = Convert.ToInt32(request.Data["level"]);
+                            var mezzoId = request.Data["mezzoId"].ToString();
+                            await _mezzoService.AggiornaBatteriaAsync(mezzoId, batteryLevel);
+                        }
+                        break;
 
-                return Ok(new { Success = true, Message = "Alert manutenzione processato" });
+                    case "SLOT_OCCUPANCY":
+                        if (request.Data.ContainsKey("occupied") && request.Data.ContainsKey("slotId"))
+                        {
+                            var occupied = Convert.ToBoolean(request.Data["occupied"]);
+                            var slotId = request.Data["slotId"].ToString();
+                            var stato = occupied ? StatoSlot.Occupato : StatoSlot.Libero;
+                            await _slotService.UpdateStatoAsync(slotId, stato);
+                        }
+                        break;
+
+                    default:
+                        _logger.LogWarning("Tipo sensore non riconosciuto: {SensorType}", request.SensorType);
+                        break;
+                }
+
+                return Ok(new { Success = true, Processed = DateTime.UtcNow });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Errore nel processamento alert manutenzione");
-                return StatusCode(500, "Errore interno del server");
-            }
-        }
-
-        /// <summary>
-        /// Riceve notifiche sistema dal gateway IoT
-        /// </summary>
-        [HttpPost("system/notification")]
-        public async Task<IActionResult> ReceiveSystemNotification([FromBody] SystemNotificationRequest request)
-        {
-            try
-            {
-                _logger.LogInformation("Notifica sistema ricevuta: {Message}", request.Message);
-
-                await _notificationService.SendSystemNotificationAsync(request.Message, request.Metadata);
-
-                return Ok(new { Success = true, Message = "Notifica sistema processata" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Errore nel processamento notifica sistema");
+                _logger.LogError(ex, "Errore nel processamento dati sensore");
                 return StatusCode(500, "Errore interno del server");
             }
         }
     }
 
-    // Request Models per il controller IoT
+    // Request Models
     public class BatteryUpdateRequest
     {
-        public string DeviceId { get; set; } = string.Empty;
-        public string MezzoId { get; set; } = string.Empty;
         public int BatteryLevel { get; set; }
-        public double Voltage { get; set; }
-        public int Temperature { get; set; }
-        public bool IsCharging { get; set; }
-        public DateTime Timestamp { get; set; }
+        public bool IsCharging { get; set; } = false;
+        public int? TimeRemainingMinutes { get; set; }
     }
 
-    public class PositionUpdateRequest
+    public class VehicleStateUpdateRequest
     {
-        public string DeviceId { get; set; } = string.Empty;
-        public string MezzoId { get; set; } = string.Empty;
-        public double Latitude { get; set; }
-        public double Longitude { get; set; }
-        public int Altitude { get; set; }
-        public int Speed { get; set; }
-        public int Heading { get; set; }
-        public int Accuracy { get; set; }
-        public DateTime Timestamp { get; set; }
+        public StatoMezzo State { get; set; }
+        public string? Message { get; set; }
     }
 
     public class SlotStatusUpdateRequest
     {
-        public string DeviceId { get; set; } = string.Empty;
-        public string SlotId { get; set; } = string.Empty;
-        public string ParcheggioId { get; set; } = string.Empty;
-        public bool IsOccupied { get; set; }
-        public string LightColor { get; set; } = string.Empty;
-        public int LightIntensity { get; set; }
-        public DateTime Timestamp { get; set; }
+        public StatoSlot State { get; set; }
+        public string? MezzoId { get; set; }
+        public string? Message { get; set; }
     }
 
-    public class GatewayStatusRequest
+    public class ParkingGatewayStatusRequest
+    {
+        public string Status { get; set; } = string.Empty; // "ONLINE", "OFFLINE", "ERROR"
+        public string? Message { get; set; }
+        public Dictionary<string, object>? Data { get; set; }
+    }
+
+    public class SensorDataRequest
     {
         public string DeviceId { get; set; } = string.Empty;
-        public string ParcheggioId { get; set; } = string.Empty;
-        public string Status { get; set; } = string.Empty;
-        public DateTime Timestamp { get; set; }
-        public object? Metadata { get; set; }
-    }
-
-    public class MaintenanceAlertRequest
-    {
-        public string MezzoId { get; set; } = string.Empty;
-        public string Message { get; set; } = string.Empty;
-        public string Type { get; set; } = string.Empty;
-        public DateTime Timestamp { get; set; }
-    }
-
-    public class SystemNotificationRequest
-    {
-        public string Message { get; set; } = string.Empty;
-        public string Source { get; set; } = string.Empty;
-        public DateTime Timestamp { get; set; }
-        public object? Metadata { get; set; }
+        public string SensorType { get; set; } = string.Empty;
+        public Dictionary<string, object> Data { get; set; } = new();
+        public DateTime Timestamp { get; set; } = DateTime.UtcNow;
     }
 }

@@ -4,6 +4,7 @@ using MobiShare.Core.Services;
 using MobiShare.Infrastructure.Data;
 using MobiShare.Infrastructure.Repositories;
 using MobiShare.Infrastructure.Services;
+using MobiShare.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -17,13 +18,22 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
+    c.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo 
+    { 
+        Title = "MobiShare API", 
+        Version = "v1",
+        Description = "API per il sistema di gestione sharing mezzi MobiShare"
+    });
+
+    // Configurazione JWT per Swagger
     c.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
     {
-        Description = "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\"",
+        Description = "Inserisci il token JWT nel formato: Bearer {token}",
         Name = "Authorization",
         In = Microsoft.OpenApi.Models.ParameterLocation.Header,
-        Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
-        Scheme = "Bearer"
+        Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
     });
 
     c.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement()
@@ -35,14 +45,19 @@ builder.Services.AddSwaggerGen(c =>
                 {
                     Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
                     Id = "Bearer"
-                },
-                Scheme = "oauth2",
-                Name = "Bearer",
-                In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                }
             },
-            new List<string>()
+            Array.Empty<string>()
         }
     });
+
+    // Abilita commenti XML per documentazione
+    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+    if (File.Exists(xmlPath))
+    {
+        c.IncludeXmlComments(xmlPath);
+    }
 });
 
 // Add Entity Framework
@@ -62,16 +77,18 @@ builder.Services.AddScoped<ICorsaService, CorsaService>();
 builder.Services.AddScoped<IMezzoService, MezzoService>();
 builder.Services.AddScoped<IParcheggioService, ParcheggioService>();
 builder.Services.AddScoped<IPuntiEcoService, PuntiEcoService>();
+builder.Services.AddScoped<ISlotService, SlotService>();
+builder.Services.AddScoped<IDeviceMappingService, DeviceMappingService>();
 
-builder.Services.Configure<IoTGatewayConfig>(options =>
-{
-    options.GatewayApiUrl = "http://localhost:5001"; // Porta del microservizio MQTT
-    options.ApiKey = "your-gateway-api-key";
-});
+// Configure IoT Gateway settings
+builder.Services.Configure<MobiShare.API.Services.IoTGatewayConfig>(
+    builder.Configuration.GetSection("IoTGateway"));
 
-// Servizi aggiornati
-builder.Services.AddHttpClient<IIoTCommandService, IoTCommandService>();
-builder.Services.AddScoped<INotificationService, NotificationService>();
+// Register IoT Command Service
+builder.Services.AddHttpClient<MobiShare.API.Services.IIoTCommandService, MobiShare.API.Services.IoTCommandService>();
+
+// Register MQTT service (HTTP-based communication with IoT Gateway)
+builder.Services.AddHttpClient<IMqttService, MobiShare.Infrastructure.Services.HttpMqttService>();
 
 // Add JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

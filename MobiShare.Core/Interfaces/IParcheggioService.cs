@@ -7,6 +7,7 @@ namespace MobiShare.Core.Interfaces
     {
         Task<IEnumerable<Parcheggio>> GetTuttiParcheggiAsync();
         Task<Parcheggio?> GetParcheggioByIdAsync(string id);
+        Task<Parcheggio?> GetByIdAsync(string id); // Alias per compatibilità
         Task<IEnumerable<Slot>> GetSlotsByParcheggioAsync(string parcheggioId);
         Task<bool> AggiornaStatoSlotAsync(string slotId, StatoSlot nuovoStato);
         Task<bool> AggiornaColoreLuceSlotAsync(string slotId, ColoreLuce colore);

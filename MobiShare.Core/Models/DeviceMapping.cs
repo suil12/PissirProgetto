@@ -1,3 +1,5 @@
+using MobiShare.Core.Enums;
+
 namespace MobiShare.Core.Models
 {
     /// <summary>

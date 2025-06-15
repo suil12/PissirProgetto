@@ -4,6 +4,7 @@ namespace MobiShare.Core.Enums
     {
         Verde,
         Rosso,
-        Giallo
+        Giallo,
+        Blu
     }
 }

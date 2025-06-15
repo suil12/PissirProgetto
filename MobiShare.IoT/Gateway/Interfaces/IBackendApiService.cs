@@ -1,7 +1,7 @@
 namespace MobiShare.IoT.Gateway.Services
 {
     /// <summary>
-    /// Servizio per comunicare con il backend via API REST
+    /// Interfaccia per comunicare con le API del Backend da parte del Gateway IoT
     /// </summary>
     public interface IBackendApiService
     {
@@ -13,4 +13,3 @@ namespace MobiShare.IoT.Gateway.Services
         Task<bool> SendSystemNotificationAsync(string message, object? metadata);
     }
 }
-

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using MobiShare.Core.Interfaces;
+using MobiShare.IoT.Gateway.Services;
 
 namespace MobiShare.IoT.Gateway.Controllers
 {

@@ -1,3 +1,6 @@
+using MobiShare.Core.Models;
+using MobiShare.Core.Enums;
+
 namespace MobiShare.Core.Interfaces
 {
     public interface IDeviceMappingService

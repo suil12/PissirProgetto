@@ -8,6 +8,7 @@ namespace MobiShare.Core.Interfaces
         Task<IEnumerable<Mezzo>> GetMezziDisponibiliAsync();
         Task<IEnumerable<Mezzo>> GetMezziByParcheggioAsync(string parcheggioId);
         Task<Mezzo?> GetMezzoByIdAsync(string id);
+        Task<Mezzo?> GetByIdAsync(string id); // Alias per compatibilità
         Task<bool> SbloccaMezzoAsync(string mezzoId, string utenteId);
         Task<bool> BloccaMezzoAsync(string mezzoId);
         Task<bool> AggiornaBatteriaAsync(string mezzoId, int percentualeBatteria);

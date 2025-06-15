@@ -17,52 +17,62 @@ namespace MobiShare.IoT.Gateway
             Console.WriteLine("    MobiShare IoT Gateway");
             Console.WriteLine("========================================");
 
-            var host = CreateHostBuilder(args).Build();
+            var builder = WebApplication.CreateBuilder(args);
+
+            // Add services to the container
+            builder.Services.AddControllers();
+
+            // Configurazione MQTT Gateway
+            builder.Services.Configure<MqttGatewayConfig>(
+                builder.Configuration.GetSection("MqttGateway"));
+
+            // Servizi core
+            builder.Services.AddSingleton<IDeviceMappingService, DeviceMappingService>();
+            builder.Services.AddHttpClient<IBackendApiService, BackendApiService>();
+            builder.Services.AddSingleton<IMqttGatewayService, MqttGatewayService>();
+
+            // Servizi hosted
+            builder.Services.AddHostedService<MqttGatewayHostedService>();
+            builder.Services.AddHostedService<DeviceSimulatorService>();
+
+            // Logging
+            builder.Services.AddLogging(logging =>
+            {
+                logging.AddConsole();
+                logging.AddDebug();
+                logging.SetMinimumLevel(LogLevel.Information);
+            });
+
+            // CORS configuration
+            builder.Services.AddCors(options =>
+            {
+                options.AddPolicy("AllowAll", policy =>
+                {
+                    policy.AllowAnyOrigin()
+                          .AllowAnyMethod()
+                          .AllowAnyHeader();
+                });
+            });
+
+            var app = builder.Build();
+
+            // Configure the HTTP request pipeline
+            app.UseCors("AllowAll");
+
+            app.MapControllers();
+
+            Console.WriteLine($"Gateway IoT avviato su: http://localhost:5001");
 
             try
             {
-                await host.RunAsync();
+                await app.RunAsync();
             }
             catch (Exception ex)
             {
-                var logger = host.Services.GetService<ILogger<Program>>();
+                var logger = app.Services.GetService<ILogger<Program>>();
                 logger?.LogError(ex, "Errore critico nell'avvio del Gateway IoT");
                 throw;
             }
         }
-
-        private static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
-                .ConfigureServices((hostContext, services) =>
-                {
-                    var configuration = hostContext.Configuration;
-
-                    // Configurazione MQTT Gateway
-                    services.Configure<MqttGatewayConfig>(
-                        configuration.GetSection("MqttGateway"));
-
-                    // Servizi core
-                    services.AddSingleton<IDeviceMappingService, DeviceMappingService>();
-                    services.AddHttpClient<IBackendApiService, BackendApiService>();
-                    services.AddSingleton<IMqttGatewayService, MqttGatewayService>();
-
-                    // Servizi hosted
-                    services.AddHostedService<MqttGatewayHostedService>();
-                    services.AddHostedService<DeviceSimulatorService>();
-
-                    // Logging
-                    services.AddLogging(builder =>
-                    {
-                        builder.AddConsole();
-                        builder.AddDebug();
-                        builder.SetMinimumLevel(LogLevel.Information);
-                    });
-                })
-                .ConfigureLogging(logging =>
-                {
-                    logging.ClearProviders();
-                    logging.AddConsole();
-                    logging.SetMinimumLevel(LogLevel.Information);
-                });
     }
 }

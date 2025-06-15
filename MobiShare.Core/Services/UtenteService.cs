@@ -56,6 +56,11 @@ namespace MobiShare.Core.Services
             return await _utenteRepository.GetByIdAsync(utenteId);
         }
 
+        public async Task<Utente?> GetByIdAsync(string utenteId)
+        {
+            return await GetUtenteByIdAsync(utenteId);
+        }
+
         public async Task<bool> UpdateCreditoAsync(string utenteId, decimal importo)
         {
             var utente = await _utenteRepository.GetByIdAsync(utenteId);

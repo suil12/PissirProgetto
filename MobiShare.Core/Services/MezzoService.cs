@@ -30,6 +30,11 @@ namespace MobiShare.Core.Services
             return await _mezzoRepository.GetByIdAsync(mezzoId);
         }
 
+        public async Task<Mezzo?> GetByIdAsync(string mezzoId)
+        {
+            return await GetMezzoByIdAsync(mezzoId);
+        }
+
         public async Task<bool> UpdateStatoMezzoAsync(string mezzoId, StatoMezzo stato)
         {
             return await _mezzoRepository.UpdateStatoAsync(mezzoId, stato);

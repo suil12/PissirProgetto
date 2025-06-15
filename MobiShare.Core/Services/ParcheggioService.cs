@@ -74,6 +74,11 @@ namespace MobiShare.Core.Services
             return await _parcheggioRepository.GetByIdAsync(id);
         }
 
+        public async Task<Parcheggio?> GetByIdAsync(string id)
+        {
+            return await GetParcheggioByIdAsync(id);
+        }
+
         public async Task<IEnumerable<Slot>> GetSlotsByParcheggioAsync(string parcheggioId)
         {
             return await _slotRepository.GetByParcheggioAsync(parcheggioId);

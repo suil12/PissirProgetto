@@ -63,8 +63,15 @@ builder.Services.AddScoped<IMezzoService, MezzoService>();
 builder.Services.AddScoped<IParcheggioService, ParcheggioService>();
 builder.Services.AddScoped<IPuntiEcoService, PuntiEcoService>();
 
-// Register MQTT service (Mock per ora)
-builder.Services.AddScoped<IMqttService, MockMqttService>();
+builder.Services.Configure<IoTGatewayConfig>(options =>
+{
+    options.GatewayApiUrl = "http://localhost:5001"; // Porta del microservizio MQTT
+    options.ApiKey = "your-gateway-api-key";
+});
+
+// Servizi aggiornati
+builder.Services.AddHttpClient<IIoTCommandService, IoTCommandService>();
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 // Add JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
